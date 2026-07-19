@@ -40,6 +40,7 @@ import { listEvaluationCases } from '@/investor/lib/evaluationStore'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLiveReload } from '@/lib/live-data'
+import { ReloadButton } from '@/components/ui/processing-feedback'
 
 function caseNextAction(c, tx) {
   const st = String(c.status || '')
@@ -135,6 +136,7 @@ export default function Dashboard() {
   const [sandboxCompleted, setSandboxCompleted] = useState(false)
   const [runningMatch, setRunningMatch] = useState(false)
   const [evalCases, setEvalCases] = useState([])
+  const [refreshing, setRefreshing] = useState(false)
 
   const refreshSandboxProgress = async () => {
     const uid = user?.id
@@ -472,14 +474,19 @@ export default function Dashboard() {
           <Badge variant="secondary" className="tabular-nums">
             {matches} {tx('khớp', 'fit')}
           </Badge>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="size-8 rounded-full p-0"
-            onClick={() => void load()}
-          >
-            <RefreshCw className="size-3.5" />
-          </Button>
+          <ReloadButton
+            iconOnly
+            loading={refreshing}
+            onClick={async () => {
+              setRefreshing(true)
+              try {
+                await load()
+              } finally {
+                setRefreshing(false)
+              }
+            }}
+            className="size-8"
+          />
         </div>
       </div>
 

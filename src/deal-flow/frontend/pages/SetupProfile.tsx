@@ -15,6 +15,10 @@ import { TeamMemberDTO, UseOfFundsDTO, StartupProfileDTO, ProfileVersionDTO } fr
 import { toConfirmCreateBody, toConfirmUpdateBody } from '../profilePayload';
 import { usePortalI18n } from '../i18n';
 import { PortalHero } from '../components/PortalUI';
+import {
+  ProcessingPanel,
+  useProcessingFeedback,
+} from '@/components/ui/processing-feedback';
 import { toast } from 'sonner';
 import {
   UploadCloud,
@@ -98,6 +102,15 @@ export default function SetupProfile() {
   const { extractionId } = useParams();
 
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'error'>('idle');
+  const ocrProc = useProcessingFeedback({
+    estimateMs: 20_000,
+    phases: [
+      { weight: 0.15, labelVi: 'Tải tài liệu…', labelEn: 'Uploading…' },
+      { weight: 0.45, labelVi: 'AI đọc nội dung…', labelEn: 'AI reading content…' },
+      { weight: 0.3, labelVi: 'Điền field hồ sơ…', labelEn: 'Filling profile fields…' },
+      { weight: 0.1, labelVi: 'Hoàn tất…', labelEn: 'Finishing…' },
+    ],
+  });
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -304,6 +317,7 @@ export default function SetupProfile() {
     abortControllerRef.current = controller;
 
     setOcrStatus('processing');
+    ocrProc.start({ estimateMs: 20_000 });
     const toastId = toast.loading(tx('Đang phân tích ảnh bằng AI (OCR)...', 'Analyzing image with AI (OCR)…'));
 
     const formData = new FormData();
@@ -333,6 +347,7 @@ export default function SetupProfile() {
         setNewCustomFields(payload.createdCustomFields || []);
 
         setOcrStatus('completed');
+        await ocrProc.finish(350);
         
         const updatedCount = payload.updatedFields?.length || 0;
         const customCount = payload.createdCustomFields?.length || 0;
@@ -348,9 +363,11 @@ export default function SetupProfile() {
     } catch (err: any) {
       if (axios.isCancel(err)) {
         console.log('Request cancelled:', err.message);
+        ocrProc.fail();
         return;
       }
       console.error('OCR failed', err);
+      ocrProc.fail();
       setOcrStatus('error');
       setOcrError(err.response?.data?.message || err.message || tx('Lỗi bất ngờ trong quá trình OCR.', 'Unexpected error during OCR.'));
       toast.error(tx('Phân tích OCR thất bại.', 'OCR analysis failed.'));
@@ -385,6 +402,7 @@ export default function SetupProfile() {
 
     setOcrError(null);
     setOcrStatus('uploading');
+    ocrProc.start({ estimateMs: 22_000 });
 
     const toastId = toast.loading(tx('Đang phân tích cấu trúc & nội dung tài liệu bằng AI...', 'Analyzing document structure & content with AI…'));
 
@@ -414,6 +432,7 @@ export default function SetupProfile() {
         setNewCustomFields(payload.createdCustomFields || []);
 
         setOcrStatus('completed');
+        await ocrProc.finish(350);
 
         const updatedCount = payload.updatedFields?.length || 0;
         const customCount = payload.createdCustomFields?.length || 0;
@@ -427,6 +446,7 @@ export default function SetupProfile() {
       }
     } catch (err: any) {
       console.error('Doc parse failed', err);
+      ocrProc.fail();
       setOcrStatus('error');
       const errorMsg = err.response?.data?.message || err.message || tx('Lỗi phân tích tài liệu.', 'Document analysis failed.');
       setOcrError(errorMsg);
@@ -1721,24 +1741,36 @@ export default function SetupProfile() {
             </Card>
           )}
 
-          {(ocrStatus === 'uploading' || ocrStatus === 'processing') && (
+          {(ocrStatus === 'uploading' || ocrStatus === 'processing' || ocrProc.active) && (
             <Card className="shadow-none">
-            <CardContent className="space-y-6 py-8 text-center">
+            <CardContent className="space-y-6 py-8">
               {imagePreviewUrl && (
-                <div className="max-w-xs mx-auto border border-border rounded-lg overflow-hidden shadow-sm relative animate-pulse">
+                <div className="max-w-xs mx-auto border border-border rounded-lg overflow-hidden shadow-sm relative">
                   <img src={imagePreviewUrl} alt="Preview" className="w-full h-auto object-cover opacity-60" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-card/10 backdrop-blur-[1px] flex items-center justify-center" />
                 </div>
               )}
-              
-              <div className="flex flex-col items-center justify-center space-y-3">
-                <div className="h-8 w-8 border-4 border-border border-t-primary rounded-full animate-spin"></div>
-                <p className="text-sm font-semibold text-foreground">
-                  {ocrStatus === 'uploading' ? tx('Đang tải hình ảnh lên...', 'Uploading image…') : tx('Đang phân tích hình ảnh bằng AI...', 'Analyzing image with AI…')}
-                </p>
-                <p className="text-xs text-muted-foreground">{tx('Quá trình này có thể mất vài giây. Vui lòng giữ nguyên màn hình.', 'This may take a few seconds. Please keep this screen open.')}</p>
-              </div>
-
+              <ProcessingPanel
+                active={ocrProc.active || ocrStatus === 'processing' || ocrStatus === 'uploading'}
+                progressPct={ocrProc.active ? ocrProc.progressPct : ocrStatus === 'uploading' ? 18 : 55}
+                remainingMs={ocrProc.remainingMs}
+                elapsedMs={ocrProc.elapsedMs}
+                phaseLabel={
+                  ocrProc.phaseLabel ||
+                  (ocrStatus === 'uploading'
+                    ? tx('Đang tải hình ảnh lên…', 'Uploading image…')
+                    : tx('Đang phân tích bằng AI…', 'Analyzing with AI…'))
+                }
+                title="AI đang xử lý tài liệu"
+                titleEn="AI is processing your document"
+                done={ocrProc.done}
+              />
+              <p className="text-center text-xs text-muted-foreground">
+                {tx(
+                  'Giữ màn hình — tiến trình ước tính, xong khi AI trả kết quả.',
+                  'Keep this screen open — ETA is estimated until AI returns.',
+                )}
+              </p>
               <div className="mx-auto max-w-xl space-y-3 border-t border-border pt-4">
                 <div className="h-10 w-full animate-pulse rounded-lg bg-muted" />
                 <div className="h-10 w-5/6 animate-pulse rounded-lg bg-muted" />

@@ -39,6 +39,7 @@ import {
   DemoBadge,
 } from '../components/PortalUI'
 import { live, useLiveReload } from '@/lib/live-data'
+import { ReloadButton } from '@/components/ui/processing-feedback'
 import { Badge } from '@/components/ui/badge'
 
 /** Browser streams files through the same-origin rewrite (see next.config.ts) */
@@ -633,9 +634,12 @@ export default function Connections() {
             : 'Theo dõi các vòng: duyệt hồ sơ → Vòng 1 phỏng vấn video → Vòng 2 câu hỏi → kết nối chính thức.'
         }
         actions={
-          <SoftButton size="sm" variant="outline" onClick={() => fetchConnections()}>
-            <RefreshCw className="size-3.5" />
-            {t.connections.reload}
+          <ReloadButton
+            loading={loading}
+            onClick={() => void fetchConnections(false)}
+            label={t.connections.reload}
+            labelEn={t.connections.reload}
+          />
           </SoftButton>
         }
       />

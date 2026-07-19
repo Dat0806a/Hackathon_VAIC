@@ -29,6 +29,10 @@ import { DemoDataBadge } from '@/investor/components/DemoDataBadge'
 import type { InvestorMatch } from '@/investor/types'
 import { useLiveReload } from '@/lib/live-data'
 import {
+  ProcessingPanel,
+  useProcessingFeedback,
+} from '@/components/ui/processing-feedback'
+import {
   PortalHero,
   PortalSection,
   PortalEmpty,
@@ -103,6 +107,15 @@ export default function InvestorMatches() {
     },
   )
 
+  const invProc = useProcessingFeedback({
+    estimateMs: 3500,
+    phases: [
+      { weight: 0.3, labelVi: 'Đọc hồ sơ…', labelEn: 'Reading profile…' },
+      { weight: 0.5, labelVi: 'Chấm điểm NĐT…', labelEn: 'Scoring investors…' },
+      { weight: 0.2, labelVi: 'Xếp hạng…', labelEn: 'Ranking…' },
+    ],
+  })
+
   const onRun = async () => {
     const profile = await loadProfileIfNeeded()
     if (!profile) {
@@ -111,9 +124,13 @@ export default function InvestorMatches() {
       return
     }
     setRunning(true)
+    invProc.start({ estimateMs: 3500 })
     try {
+      // small artificial frames so bar feels alive for local scoring
+      await new Promise((r) => setTimeout(r, 400))
       const next = runInvestorMatching(startupId, profile)
       setMatches(next)
+      await invProc.finish(280)
       try {
         const { live } = await import('@/lib/live-data')
         live.evaluations({ action: 'investor-match-run' })
@@ -121,6 +138,8 @@ export default function InvestorMatches() {
         /* */
       }
       toast.success(fill(inv.scoredOk, { n: next.length }))
+    } catch {
+      invProc.fail()
     } finally {
       setRunning(false)
     }
@@ -152,6 +171,18 @@ export default function InvestorMatches() {
 
   return (
     <div className="space-y-5">
+      {(invProc.active || invProc.done) && (
+        <ProcessingPanel
+          active={invProc.active || invProc.done}
+          progressPct={invProc.progressPct}
+          remainingMs={invProc.remainingMs}
+          elapsedMs={invProc.elapsedMs}
+          phaseLabel={invProc.phaseLabel}
+          title="Đang so khớp nhà đầu tư"
+          titleEn="Matching investors"
+          done={invProc.done}
+        />
+      )}
       <PortalHero
         eyebrow={
           <>

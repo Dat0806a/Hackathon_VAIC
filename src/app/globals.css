@@ -1510,3 +1510,18 @@ html.perf-lite .nf-dealgraph-css {
     animation: none !important;
   }
 }
+
+/* Processing feedback */
+@keyframes processing-shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+.animate-processing-shimmer {
+  animation: processing-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 1.1s linear infinite;
+}

@@ -38,6 +38,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useLiveReload } from '@/lib/live-data'
+import { ReloadButton } from '@/components/ui/processing-feedback'
 
 function programRankScore(p: Program): number {
   // Prefer OPEN, higher quota, more sectors defined
@@ -214,15 +215,10 @@ export default function ProgramsPage() {
                 {tx('Chạy so khớp', 'Run matching')}
               </Button>
             ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={() => void load()}
-            >
-              <RefreshCwIcon data-icon="inline-start" />
-              {tx('Làm mới', 'Refresh')}
-            </Button>
+            <ReloadButton
+              loading={loading}
+              onClick={() => void load({ silent: false })}
+            />
             {session?.role !== 'reviewer' && mode === 'select' ? (
               <Button
                 size="sm"

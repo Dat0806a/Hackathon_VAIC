@@ -45,6 +45,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { live, useLiveReload } from '@/lib/live-data'
+import {
+  ProcessingPanel,
+  ReloadButton,
+  useProcessingFeedback,
+} from '@/components/ui/processing-feedback'
 
 const SCORE_KEYS = [
   { key: 'industry', w: '25%' },
@@ -82,6 +87,16 @@ export default function Matches() {
   const [introMessage, setIntroMessage] = useState('')
   const [sendingConnection, setSendingConnection] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const proc = useProcessingFeedback({
+    estimateMs: 14_000,
+    phases: [
+      { weight: 0.2, labelVi: 'Đọc hồ sơ chính thức…', labelEn: 'Reading official profile…' },
+      { weight: 0.45, labelVi: 'Chấm điểm đối tác…', labelEn: 'Scoring partners…' },
+      { weight: 0.25, labelVi: 'Xếp hạng & lý do khớp…', labelEn: 'Ranking & reasons…' },
+      { weight: 0.1, labelVi: 'Gói kết quả…', labelEn: 'Packaging results…' },
+    ],
+  })
   /** partnerId → connection status (prevents re-send spam) */
   const [connectedByPartner, setConnectedByPartner] = useState({})
 
@@ -141,15 +156,20 @@ export default function Matches() {
       return
     }
     setRecalculating(true)
+    proc.start({ estimateMs: 14_000 })
     const toastId = toast.loading(t.matches.running)
     try {
       const res = await api.post('/startup/matches/run', { confirmedProfile })
       if (res.data?.success) {
+        await proc.finish()
         toast.success(t.matches.run, { id: toastId })
         setMatches(dedupeMatches(Array.isArray(res.data.data) ? res.data.data : []))
         live.matches({ action: 'run' })
+      } else {
+        proc.fail()
       }
     } catch (e) {
+      proc.fail()
       const code = e?.response?.data?.error?.code || ''
       const msg =
         code === 'PROFILE_NOT_CONFIRMED'
@@ -160,6 +180,15 @@ export default function Matches() {
       toast.error(msg, { id: toastId })
     } finally {
       setRecalculating(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([fetchMatches(true), fetchExistingConnections()])
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -308,6 +337,18 @@ export default function Matches() {
 
   return (
     <div className="space-y-5">
+      {(proc.active || proc.done) && (
+        <ProcessingPanel
+          active={proc.active || proc.done}
+          progressPct={proc.progressPct}
+          remainingMs={proc.remainingMs}
+          elapsedMs={proc.elapsedMs}
+          phaseLabel={proc.phaseLabel}
+          title="Đang so khớp đối tác"
+          titleEn="Matching partners"
+          done={proc.done}
+        />
+      )}
       <PortalHero
         eyebrow={
           <>
@@ -330,23 +371,25 @@ export default function Matches() {
                 {t.matches.openInvestorMatch}
               </SoftButton>
             ) : null}
+            <ReloadButton
+              loading={refreshing}
+              onClick={() => void handleRefresh()}
+              label={t.matches.refresh}
+              labelEn={t.matches.refresh}
+            />
             <SoftButton
               size="sm"
-              variant="outline"
-              onClick={fetchMatches}
-              className="rounded-full"
-            >
-              <RefreshCw className="size-3.5" />
-              {t.matches.refresh}
-            </SoftButton>
-            <SoftButton
-              size="sm"
-              disabled={recalculating}
+              disabled={recalculating || proc.active}
               onClick={handleRecalculateMatches}
               className="rounded-full"
             >
-              <Sparkles className="size-3.5" />
-              {recalculating ? t.matches.running : t.matches.run}
+              <Sparkles
+                className={cn(
+                  'size-3.5',
+                  (recalculating || proc.active) && 'animate-spin',
+                )}
+              />
+              {recalculating || proc.active ? t.matches.running : t.matches.run}
             </SoftButton>
           </>
         }

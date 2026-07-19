@@ -57,6 +57,10 @@ import { LoadingBlock } from '@/components/dashboard/LoadingBlock'
 import { ThemeToggle, LangToggle } from '@/components/Controls'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
+import {
+  ProcessingPanel,
+  useProcessingFeedback,
+} from '@/components/ui/processing-feedback'
 
 const accessKey = (id: string) => `nexora.access.${id}`
 
@@ -74,6 +78,15 @@ export default function PublicApplyPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('upload')
+  const extractProc = useProcessingFeedback({
+    estimateMs: 18_000,
+    phases: [
+      { weight: 0.15, labelVi: 'Tải file lên…', labelEn: 'Uploading file…' },
+      { weight: 0.4, labelVi: 'AI đọc tài liệu…', labelEn: 'AI reading document…' },
+      { weight: 0.3, labelVi: 'Trích xuất field…', labelEn: 'Extracting fields…' },
+      { weight: 0.15, labelVi: 'Điền form…', labelEn: 'Filling form…' },
+    ],
+  })
 
   const [form, setForm] = useState<ApplyForm>(emptyApplyForm)
   const [matchingOptIn, setMatchingOptIn] = useState(true)
@@ -155,6 +168,7 @@ export default function PublicApplyPage() {
     setError(null)
     setAiFilledKeys([])
     setAiWarnings([])
+    extractProc.start({ estimateMs: 18_000 })
 
     try {
       const fd = new FormData()
@@ -181,6 +195,7 @@ export default function PublicApplyPage() {
       setAiWarnings(
         Array.isArray(body.data?.warnings) ? body.data.warnings : [],
       )
+      await extractProc.finish(400)
       setPhase('review')
       if (filled.length === 0) {
         toast.message(
@@ -205,6 +220,7 @@ export default function PublicApplyPage() {
         )
       }
     } catch (e) {
+      extractProc.fail()
       const msg = e instanceof Error ? e.message : 'AI error'
       // Soft error — still open form
       setForm(emptyApplyForm())
@@ -486,21 +502,25 @@ export default function PublicApplyPage() {
                     onChange={(e) => pickFile(e.target.files)}
                   />
                   {phase === 'analyzing' ? (
-                    <>
-                      <Spinner className="size-10 text-primary" />
-                      <p className="text-sm font-semibold sm:text-base">
-                        {tx(
-                          'AI đang phân tích file…',
-                          'AI is analyzing your file…',
-                        )}
-                      </p>
-                      <p className="max-w-sm text-xs text-muted-foreground">
+                    <div className="w-full max-w-md px-2">
+                      <ProcessingPanel
+                        active
+                        progressPct={extractProc.progressPct}
+                        remainingMs={extractProc.remainingMs}
+                        elapsedMs={extractProc.elapsedMs}
+                        phaseLabel={extractProc.phaseLabel}
+                        title="AI đang phân tích file"
+                        titleEn="AI is analyzing your file"
+                        variant="compact"
+                        className="border-0 bg-transparent p-0 shadow-none"
+                      />
+                      <p className="mt-3 text-center text-xs text-muted-foreground">
                         {tx(
                           'Trích xuất tên, ngành, giai đoạn, vấn đề, giải pháp…',
                           'Extracting name, sector, stage, problem, solution…',
                         )}
                       </p>
-                    </>
+                    </div>
                   ) : (
                     <>
                       <span className="flex size-16 items-center justify-center rounded-2xl bg-primary/15 text-primary">
