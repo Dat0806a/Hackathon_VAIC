@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Announcement } from '@/lib/announcements'
 import {
+  announcementsStoreMode,
   readAnnouncementsFile,
   writeAnnouncementsFile,
 } from '@/lib/announcements-server'
@@ -23,7 +24,10 @@ function hasToken(req: NextRequest) {
 export async function GET(req: NextRequest) {
   if (!hasToken(req)) return unauthorized()
   const items = await readAnnouncementsFile()
-  return NextResponse.json({ success: true, data: { items } })
+  return NextResponse.json({
+    success: true,
+    data: { items, store: announcementsStoreMode() },
+  })
 }
 
 export async function PUT(req: NextRequest) {
@@ -47,5 +51,8 @@ export async function PUT(req: NextRequest) {
     bodyText: String(a.bodyText || '').slice(0, 10_000),
   }))
   await writeAnnouncementsFile(capped)
-  return NextResponse.json({ success: true, data: { items: capped } })
+  return NextResponse.json({
+    success: true,
+    data: { items: capped, store: announcementsStoreMode() },
+  })
 }

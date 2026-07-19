@@ -73,8 +73,8 @@ export function AdminAnnouncements({ token }: Props) {
       setItems(saved)
       toast.success(
         tx(
-          'Đã lưu thông báo (trình duyệt + server)',
-          'Announcement saved (browser + server)',
+          'Đã lưu — mọi tài khoản / máy đều thấy (khi vào trang làm việc)',
+          'Saved — visible to all accounts/devices (on work pages)',
         ),
       )
     } catch (e) {

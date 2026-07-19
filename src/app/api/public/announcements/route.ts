@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { readAnnouncementsFile } from '@/lib/announcements-server'
+import {
+  announcementsStoreMode,
+  readAnnouncementsFile,
+} from '@/lib/announcements-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,8 +13,15 @@ export async function GET() {
     if (a.expiresAt && new Date(a.expiresAt).getTime() < Date.now()) return false
     return true
   })
-  return NextResponse.json({
-    success: true,
-    data: { items: active },
-  })
+  return NextResponse.json(
+    {
+      success: true,
+      data: { items: active, store: announcementsStoreMode() },
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    },
+  )
 }
