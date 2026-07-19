@@ -443,30 +443,10 @@ class DatabaseEngine {
         const fileContent = fs.readFileSync(readPath, 'utf8');
         const parsed = JSON.parse(fileContent);
 
-        // Idempotently merge DEFAULT_PARTNERS with loaded partner profiles (equivalent to ON CONFLICT DO UPDATE)
-        const parsedPartners: PartnerProfileDTO[] = (parsed.partnerProfiles || []).map(mapPartnerRowToDTO);
-        const partnerMap = new Map<string, PartnerProfileDTO>();
-        parsedPartners.forEach((p) => {
-          if (p.organizationName) {
-            partnerMap.set(p.organizationName, p);
-          }
-        });
-
-        DEFAULT_PARTNERS.forEach((dp) => {
-          const existing = partnerMap.get(dp.organizationName);
-          if (existing) {
-            partnerMap.set(dp.organizationName, {
-              ...existing,
-              ...dp,
-              id: existing.id, // preserve ID
-              ownerId: existing.ownerId !== undefined ? existing.ownerId : (dp.ownerId || null),
-            });
-          } else {
-            partnerMap.set(dp.organizationName, dp);
-          }
-        });
-
-        const mergedPartners = Array.from(partnerMap.values());
+        // Real partners only — strip seeded isDemo "Mô phỏng" rows
+        const parsedPartners: PartnerProfileDTO[] = (parsed.partnerProfiles || [])
+          .map(mapPartnerRowToDTO)
+          .filter((p) => !p.isDemo);
 
         // Fill in missing default tables if structure has changed
         return {
@@ -475,7 +455,7 @@ class DatabaseEngine {
           startupProfiles: parsed.startupProfiles || {},
           startupProfileVersions: parsed.startupProfileVersions || {},
           startupDocuments: parsed.startupDocuments || [],
-          partnerProfiles: mergedPartners,
+          partnerProfiles: parsedPartners,
           matchResults: parsed.matchResults || {},
           connectionRequests: parsed.connectionRequests || [],
           sandboxSimulations: parsed.sandboxSimulations || [],
@@ -485,13 +465,14 @@ class DatabaseEngine {
       console.error('Failed to parse database store file, falling back to clean store', e);
     }
 
+    // Empty partner library by default (no demo seed)
     const initialStore: DBStore = {
       users: [],
       profiles: [],
       startupProfiles: {},
       startupProfileVersions: {},
       startupDocuments: [],
-      partnerProfiles: DEFAULT_PARTNERS,
+      partnerProfiles: [],
       matchResults: {},
       connectionRequests: [],
       sandboxSimulations: [],
@@ -658,12 +639,13 @@ class DatabaseEngine {
     return this.store.startupDocuments.filter((d) => d.startupId === startup.id);
   }
 
-  // Partner Profiles
+  // Partner Profiles — never expose isDemo seed partners
   public getPartnerProfiles(activeOnly = true): PartnerProfileDTO[] {
+    let list = this.store.partnerProfiles.filter((p) => !p.isDemo);
     if (activeOnly) {
-      return this.store.partnerProfiles.filter((p) => p.isActive);
+      list = list.filter((p) => p.isActive);
     }
-    return this.store.partnerProfiles;
+    return list;
   }
 
   public getPartnerById(partnerId: string): PartnerProfileDTO | null {

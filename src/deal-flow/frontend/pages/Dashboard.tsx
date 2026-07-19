@@ -156,10 +156,22 @@ export default function Dashboard() {
             raw.acceptedConnections ?? counts.accepted ?? counts.ACCEPTED ?? 0,
           profileCompletion: raw.profileCompletion ?? 0,
           recentMatches: Array.isArray(raw.recentMatches)
-            ? raw.recentMatches
+            ? raw.recentMatches.filter(
+                (m: any) =>
+                  !(
+                    m?.partnerIsDemo ||
+                    m?.partner_is_demo ||
+                    m?.partner?.isDemo ||
+                    m?.partner?.is_demo ||
+                    m?.isDemo ||
+                    m?.is_demo
+                  ),
+              )
             : [],
           recentConnections: Array.isArray(raw.recentConnections)
-            ? raw.recentConnections
+            ? raw.recentConnections.filter(
+                (c: any) => !(c?.isDemo || c?.is_demo || c?.partner?.isDemo),
+              )
             : [],
         })
       }

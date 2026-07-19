@@ -362,12 +362,15 @@ export class MatchingService {
   // Runs match for single startup against all active partners
   public static runBatchMatch(startup: StartupProfileDTO, partners: PartnerProfileDTO[], versionNum: number): MatchResultDTO[] {
     const results: MatchResultDTO[] = [];
-    partners.forEach((partner) => {
-      const res = this.calculateMatch(startup, partner, versionNum);
-      if (res) {
-        results.push(res);
-      }
-    });
+    // Skip demo / "Mô phỏng" partners — only real orgs
+    partners
+      .filter((partner) => !partner.isDemo)
+      .forEach((partner) => {
+        const res = this.calculateMatch(startup, partner, versionNum);
+        if (res) {
+          results.push(res);
+        }
+      });
 
     // Sort descending by score
     return results.sort((a, b) => b.totalScore - a.totalScore);

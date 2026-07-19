@@ -70,6 +70,16 @@ function dedupeConnections(list) {
   }
   for (const c of list) {
     const partner = c.partner || {}
+    // Hide demo / "Mô phỏng" partners
+    if (c.isDemo || c.is_demo || partner.isDemo || partner.is_demo) continue
+    const pname = String(partner.organizationName || c.partnerName || '')
+    if (
+      /Pacific Retail|Delta Founders|Mekong Venture|Saigon Angel|Aurora Seed|Nova Retail/i.test(
+        pname,
+      )
+    ) {
+      continue
+    }
     const pid = String(c.partnerId || partner.id || c.id || '')
     if (!pid) continue
     const prev = byPartner.get(pid)

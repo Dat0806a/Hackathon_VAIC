@@ -102,10 +102,29 @@ export default function Matches() {
 
   const str = (v) => String(v ?? '').toLowerCase()
 
+  /** Drop seeded "Mô phỏng" / isDemo partners — keep real orgs only (e.g. Summer AI) */
+  const isDemoMatch = (m) => {
+    const p = m?.partner || {}
+    if (p.isDemo || p.is_demo || m?.partnerIsDemo || m?.partner_is_demo || m?.isDemo || m?.is_demo) {
+      return true
+    }
+    // Known seed names (remote API may still return them)
+    const name = String(p.organizationName || p.name || m?.partnerName || '')
+    if (
+      /Pacific Retail|Delta Founders|Mekong Venture|Saigon Angel|Aurora Seed|Nova Retail|Green Horizon|Medicore|Atlas Logistics|Future Learning|Quantum Labs|Pioneer Fintech|Vertex Institute|Orbit Accelerator|Horizon Travel|Apex Commerce/i.test(
+        name,
+      )
+    ) {
+      return true
+    }
+    return false
+  }
+
   /** Dedupe match rows by partner id (re-run match can pile duplicates) */
   const dedupeMatches = (list) => {
     const map = new Map()
     for (const m of list || []) {
+      if (isDemoMatch(m)) continue
       const pid = m?.partner?.id || m?.partnerId || m?.id
       if (!pid) continue
       const prev = map.get(pid)
