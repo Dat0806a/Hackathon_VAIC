@@ -262,14 +262,15 @@ export default function PublicApplyPage() {
       return
     }
     if (!validateForm()) return
+    // Soft hard-filter: warn but do NOT auto-reject. Intake still reviews.
     if (fit.hardFail) {
-      toast.error(
+      const ok = window.confirm(
         tx(
-          'Không qua hard filter chương trình — chỉnh ngành/giai đoạn.',
-          'Fails program hard filters — fix sector/stage.',
+          'Ngành/giai đoạn có thể ngoài hard filter chương trình.\n\nHồ sơ VẪN được nộp để đội Intake xem — không tự từ chối.\nTiếp tục nộp?',
+          'Sector/stage may be outside this program’s hard filters.\n\nYou can still submit — Intake reviews (no auto-reject).\nSubmit anyway?',
         ),
       )
-      return
+      if (!ok) return
     }
 
     setSubmitting(true)
@@ -852,12 +853,14 @@ export default function PublicApplyPage() {
                 </label>
 
                 {fit.hardFail ? (
-                  <div className="mt-3 flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 px-3 py-2.5 text-xs text-rose-700 dark:text-rose-300">
+                  <div className="mt-3 flex gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-900 dark:text-amber-200">
                     <AlertTriangleIcon className="size-4 shrink-0" />
-                    {tx(
-                      'Hard filter: ngành/giai đoạn ngoài danh sách chương trình.',
-                      'Hard filter: sector/stage not allowed by this program.',
-                    )}
+                    <span>
+                      {tx(
+                        'Cảnh báo fit: ngành/giai đoạn có thể lệch hard filter — vẫn nộp được. Đội Intake sẽ xem, không tự “từ chối” lúc nộp.',
+                        'Fit warning: sector/stage may miss hard filters — you can still submit. Intake reviews; no auto-reject on submit.',
+                      )}
+                    </span>
                   </div>
                 ) : null}
 
@@ -882,7 +885,7 @@ export default function PublicApplyPage() {
                   </div>
                   <Button
                     className="h-11 rounded-full px-6"
-                    disabled={submitting || fit.hardFail || !agreeTerms}
+                    disabled={submitting || !agreeTerms}
                     onClick={() => void submitAll()}
                   >
                     {submitting ? (
@@ -905,14 +908,55 @@ export default function PublicApplyPage() {
                   <CheckCircle2Icon className="size-6" />
                 </div>
                 <h2 className="font-heading text-xl font-semibold">
-                  {tx('Đã nộp hồ sơ', 'Application submitted')}
+                  {tx('Đã nộp hồ sơ thành công', 'Application submitted')}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {tx(
-                    'Chờ admin duyệt. Mở trang xác nhận để chỉnh thêm trên thiết bị này.',
-                    'Awaiting admin review. Open confirm page to refine on this device.',
+                    'Chưa ai “từ chối” bạn lúc này. Hồ sơ vào hàng chờ đội chương trình (Intake) — họ mới chấm / shortlist / chọn.',
+                    'Nobody rejected you just now. Your file is in the program queue for Intake staff — they score / shortlist / decide.',
                   )}
                 </p>
+
+                {/* Clear pipeline: Startup vs Intake */}
+                <ol className="mt-5 space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs sm:text-[13px]">
+                  <li className="flex gap-2">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                      1
+                    </span>
+                    <span>
+                      <strong>{tx('Bạn (Startup)', 'You (Startup)')}:</strong>{' '}
+                      {tx(
+                        'Đã nộp — trạng thái thường là “Đã nhận / Đang trích xuất / Cần kiểm tra”.',
+                        'Submitted — status is usually Received / Extracting / Needs review.',
+                      )}
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                      2
+                    </span>
+                    <span>
+                      <strong>{tx('Đội Intake', 'Intake team')}:</strong>{' '}
+                      {tx(
+                        'Xác nhận profile → chấm điểm → shortlist / phỏng vấn / chấp nhận hoặc không chọn.',
+                        'Confirm profile → score → shortlist / interview / accept or decline.',
+                      )}
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
+                      3
+                    </span>
+                    <span>
+                      <strong>{tx('Admin NIC', 'NIC Admin')}:</strong>{' '}
+                      {tx(
+                        'Chỉ duyệt tài khoản đăng ký — không chấm hồ sơ chương trình.',
+                        'Only approves account sign-up — does not score program applications.',
+                      )}
+                    </span>
+                  </li>
+                </ol>
+
                 <ul className="mt-4 space-y-2">
                   {created.map((app) => {
                     const id =
@@ -924,6 +968,7 @@ export default function PublicApplyPage() {
                       (app as { fileName?: string }).fileName ||
                       file?.name ||
                       '—'
+                    const st = String(app.status || 'RECEIVED')
                     return (
                       <li
                         key={id || fileName}
@@ -934,7 +979,10 @@ export default function PublicApplyPage() {
                             {form.startupName || fileName}
                           </p>
                           <p className="truncate text-[11px] text-muted-foreground">
-                            {fileName}
+                            {fileName} · {tx('Trạng thái', 'Status')}:{' '}
+                            <span className="font-medium text-foreground">
+                              {st}
+                            </span>
                           </p>
                         </div>
                         {id ? (
@@ -945,7 +993,7 @@ export default function PublicApplyPage() {
                               router.push(`/my-application/${id}`)
                             }
                           >
-                            {tx('Xem / xác nhận', 'View / confirm')}
+                            {tx('Theo dõi hồ sơ', 'Track application')}
                           </Button>
                         ) : null}
                       </li>

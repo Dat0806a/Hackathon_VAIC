@@ -244,7 +244,14 @@ export default function ApplicationsPage() {
     <PageShell>
       <PageHeader
         title={tx('Hồ sơ', 'Applications')}
-        description={program?.name || undefined}
+        description={
+          program?.name
+            ? `${program.name} · ${tx(
+                'Startup nộp → bạn (Intake) xác nhận & chấm → shortlist/chọn. Không tự từ chối lúc nộp.',
+                'Startups submit → you (Intake) confirm & score → shortlist/select. No auto-reject on submit.',
+              )}`
+            : undefined
+        }
         meta={
           <>
             <Badge variant="secondary">
@@ -252,12 +259,12 @@ export default function ApplicationsPage() {
             </Badge>
             {needsReview > 0 ? (
               <Badge variant="default">
-                {needsReview} {tx('chờ duyệt', 'review')}
+                {needsReview} {tx('chờ kiểm tra', 'needs review')}
               </Badge>
             ) : null}
             {eligible > 0 ? (
               <Badge variant="outline">
-                {eligible} {tx('sẵn sàng', 'ready')}
+                {eligible} {tx('sẵn sàng chấm', 'ready to score')}
               </Badge>
             ) : null}
             {processingCount > 0 ? (
