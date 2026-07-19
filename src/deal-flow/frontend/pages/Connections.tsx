@@ -640,7 +640,6 @@ export default function Connections() {
             label={t.connections.reload}
             labelEn={t.connections.reload}
           />
-          </SoftButton>
         }
       />
 
