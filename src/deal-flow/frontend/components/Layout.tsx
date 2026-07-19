@@ -11,9 +11,7 @@ import {
   UserRound,
   Sparkles,
   Link2,
-  BookOpen,
   LogOut,
-  Gamepad2,
   Home,
   ChevronsUpDown,
   Handshake,
@@ -257,14 +255,6 @@ function NavUser() {
                 <UserRound />
                 {t.profileMenu}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={go('/sandbox')}>
-                <Gamepad2 />
-                {lang === 'en' ? 'Sandbox (sim)' : 'Phòng giả lập'}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={go('/partners')}>
-                <BookOpen />
-                {lang === 'en' ? 'Partner directory' : 'Danh bạ đối tác'}
-              </DropdownMenuItem>
               {invOn ? (
                 <>
                   <DropdownMenuItem onClick={go('/investor-matches')}>
@@ -382,17 +372,17 @@ function SiteHeader({
 
 export default function Layout({ children }: LayoutProps) {
   const { pathname } = useLocation()
+  const { lang } = usePortalI18n()
   const items = useNavItems()
   const hit = items.find(
     (n) => pathname === n.to || pathname.startsWith(`${n.to}/`),
   )
-  // Titles for routes only in user menu
+  // Titles for secondary routes (user menu only — lean main path)
   const extraTitle: Record<string, string> = {
-    '/sandbox': 'Sandbox',
-    '/partners': 'Partners',
-    '/investor-matches': 'Investors',
-    '/evaluations': 'Evaluations',
-    '/notifications': 'Notifications',
+    '/account': lang === 'en' ? 'Personalization' : 'Tùy chỉnh',
+    '/investor-matches': lang === 'en' ? 'Investors' : 'Nhà đầu tư',
+    '/evaluations': lang === 'en' ? 'Evaluations' : 'Kiểm chứng',
+    '/notifications': lang === 'en' ? 'Notifications' : 'Thông báo',
   }
   let title = hit?.label || 'Startup'
   for (const [prefix, label] of Object.entries(extraTitle)) {

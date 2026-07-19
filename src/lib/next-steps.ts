@@ -295,43 +295,22 @@ export function buildStartupNextSteps(input: {
       pendingConnections > 0
         ? `Track ${pendingConnections} pending connections`
         : 'Track connections',
-    bodyVi: 'Xem intro đã gửi, trạng thái chấp nhận, mở phòng giả lập khi được nhận.',
-    bodyEn: 'See sent intros, accept status, open sandbox when accepted.',
+    bodyVi: 'Xem intro đã gửi và trạng thái chấp nhận từ đối tác.',
+    bodyEn: 'See sent intros and partner accept status.',
     ctaVi: 'Kết nối',
     ctaEn: 'Connections',
     href: '/connections',
   })
 
-  steps.push({
-    id: 'sandbox',
-    done: sandboxCompleted,
-    primary: !sandboxCompleted && (acceptedConnections > 0 || matchCount > 0),
-    titleVi: sandboxCompleted
-      ? 'Đã hoàn thành phòng giả lập'
-      : 'Phòng giả lập',
-    titleEn: sandboxCompleted
-      ? 'Sandbox completed'
-      : 'Sandbox simulation',
-    bodyVi: sandboxCompleted
-      ? 'Bạn đã chạy xong thử thách. Có thể chơi lại hoặc sang so khớp nhà đầu tư.'
-      : 'Chứng minh năng lực founder với đối tác đã chấp nhận (hoặc chơi demo).',
-    bodyEn: sandboxCompleted
-      ? 'Challenge finished. Replay anytime or move to investor matching.'
-      : 'Prove founder judgment with an accepted partner (or play demo).',
-    ctaVi: sandboxCompleted ? 'Xem / chơi lại' : 'Mở giả lập',
-    ctaEn: sandboxCompleted ? 'View / replay' : 'Open sandbox',
-    href: '/sandbox',
-  })
-
   if (investorEnabled) {
     steps.push({
       id: 'investor',
-      primary: sandboxCompleted || (hasConfirmedProfile && matchCount > 0),
+      primary: hasConfirmedProfile && matchCount > 0 && acceptedConnections > 0,
       done: false,
-      titleVi: 'So khớp nhà đầu tư & kiểm chứng',
-      titleEn: 'Investor match & validation',
-      bodyVi: 'Match NĐT demo → mutual → phòng thuyết trình (pipeline kiểm chứng).',
-      bodyEn: 'Demo investor match → mutual → pitch room (validation pipeline).',
+      titleVi: 'Tuỳ chọn — So khớp nhà đầu tư',
+      titleEn: 'Optional — Investor match',
+      bodyVi: 'Sau bước kết nối: match NĐT & kiểm chứng nếu cần.',
+      bodyEn: 'After connect: investor match & validation if needed.',
       ctaVi: 'Match nhà đầu tư',
       ctaEn: 'Investor match',
       href: '/investor-matches',

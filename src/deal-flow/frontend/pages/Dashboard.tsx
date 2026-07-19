@@ -19,15 +19,13 @@ import {
   Sparkles,
   UserRound,
   Link2,
-  Gamepad2,
   Handshake,
   Upload,
-  RefreshCw,
-  Award,
   MessageSquare,
   ClipboardCheck,
   Video,
   Target,
+  Gamepad2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -133,37 +131,9 @@ export default function Dashboard() {
 
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [sandboxCompleted, setSandboxCompleted] = useState(false)
   const [runningMatch, setRunningMatch] = useState(false)
   const [evalCases, setEvalCases] = useState([])
   const [refreshing, setRefreshing] = useState(false)
-
-  const refreshSandboxProgress = async () => {
-    const uid = user?.id
-    if (!uid) return
-    try {
-      const { isSandboxCompleted, markSandboxCompleted } = await import(
-        '../lib/sandboxProgress'
-      )
-      let done = isSandboxCompleted(uid)
-      try {
-        const res = await api.get('/startup/sandbox/active')
-        if (res.data?.success && res.data.data) {
-          const sim = res.data.data
-          const st = String(sim.status || '').toLowerCase()
-          if (st === 'completed' || sim.report) {
-            done = true
-            markSandboxCompleted(uid, { simId: sim.id })
-          }
-        }
-      } catch {
-        /* keep */
-      }
-      setSandboxCompleted(done)
-    } catch {
-      setSandboxCompleted(false)
-    }
-  }
 
   const load = async () => {
     try {
@@ -201,12 +171,10 @@ export default function Dashboard() {
       }
     } finally {
       setLoading(false)
-      void refreshSandboxProgress()
     }
   }
 
   // Soft live reload: focus / tab visible / mutations (profile, matches, connections, eval)
-  // → no browser F5 needed when navigating back or switching tabs.
   useLiveReload(
     async () => {
       await load()
@@ -219,7 +187,6 @@ export default function Dashboard() {
         'nf:matches',
         'nf:connections',
         'nf:evaluations',
-        'nf:sandbox-progress',
       ],
       intervalMs: 45_000,
       debounceMs: 1000,
@@ -327,39 +294,25 @@ export default function Dashboard() {
         icon: Link2,
       }
     }
-    if (!sandboxCompleted) {
+    // Optional additive: investor validation (not required core path)
+    if (validationOn && activeCases.length === 0) {
       return {
-        title: tx(
-          'Bước 4 — Phòng giả lập (Module 7)',
-          'Step 4 — Sandbox sim (Module 7)',
-        ),
+        title: tx('Tuỳ chọn — Kiểm chứng NĐT', 'Optional — Investor validation'),
         body: tx(
-          'Ra quyết định theo lượt — báo cáo năng lực founder.',
-          'Turn-based decisions — founder capability report.',
+          'Sau khi có kết nối: so khớp NĐT nếu bạn muốn đi sâu.',
+          'After connections: match investors if you want a deeper track.',
         ),
-        cta: tx('Mở giả lập', 'Open sandbox'),
-        to: '/sandbox',
-        icon: Gamepad2,
-      }
-    }
-    if (validationOn) {
-      return {
-        title: tx(
-          'Hành trình kiểm chứng đầu tư',
-          'Investment validation journey',
-        ),
-        body: tx(
-          'So khớp NĐT → mutual → chấp nhận → pitch · mô phỏng · minh chứng (additive).',
-          'Investor match → mutual → accept → pitch · sim · proof (additive).',
-        ),
-        cta: tx('So khớp NĐT', 'Investor match'),
+        cta: tx('Xem NĐT', 'View investors'),
         to: '/investor-matches',
         icon: Handshake,
       }
     }
     return {
       title: tx('Bạn đang tiến tốt', "You're on track"),
-      body: tx('Xem kết nối hoặc chạy lại so khớp.', 'Review connections or re-run matching.'),
+      body: tx(
+        'Quy trình cốt lõi: hồ sơ → so khớp → kết nối.',
+        'Core path: profile → match → connect.',
+      ),
       cta: tx('Kết nối', 'Connections'),
       to: '/connections',
       icon: CheckCircle2,
@@ -373,11 +326,12 @@ export default function Dashboard() {
     highMatches,
     pending,
     accepted,
-    sandboxCompleted,
     validationOn,
+    activeCases.length,
     lang,
   ])
 
+  /** Lean path like Intake — only the steps that matter */
   const pathSteps = [
     {
       n: 1,
@@ -394,25 +348,9 @@ export default function Dashboard() {
     {
       n: 3,
       label: tx('Kết nối', 'Connect'),
-      done: accepted > 0,
+      done: accepted > 0 || pending > 0,
       to: '/connections',
     },
-    {
-      n: 4,
-      label: tx('Giả lập', 'Sim'),
-      done: sandboxCompleted,
-      to: '/sandbox',
-    },
-    ...(validationOn
-      ? [
-          {
-            n: 5,
-            label: tx('Kiểm chứng', 'Validate'),
-            done: evalCases.some((c) => c.status === 'completed'),
-            to: activeCases.length ? '/evaluations' : '/investor-matches',
-          },
-        ]
-      : []),
   ]
 
   const runMatchNow = async () => {

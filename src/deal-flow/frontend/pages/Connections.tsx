@@ -18,7 +18,7 @@ import {
   XCircle,
   Clock,
   Trash2,
-  Gamepad2,
+  Sparkles,
   Mail,
   User,
   Phone,
@@ -846,33 +846,10 @@ export default function Connections() {
                     <SoftButton
                       size="sm"
                       className="rounded-full"
-                      onClick={() => {
-                        const pid = c.partnerId || partner.id
-                        if (!pid) {
-                          navigate('/sandbox')
-                          return
-                        }
-                        api
-                          .post('/startup/sandbox/create', { partnerId: pid })
-                          .then((res) => {
-                            if (res.data?.success) {
-                              toast.success(t.connections.openSandbox)
-                            }
-                            navigate('/sandbox')
-                          })
-                          .catch((e) => {
-                            toast.error(
-                              e?.response?.data?.message ||
-                                (lang === 'en'
-                                  ? 'Could not open sandbox'
-                                  : 'Không mở được phòng giả lập'),
-                            )
-                            navigate('/sandbox')
-                          })
-                      }}
+                      onClick={() => navigate('/matches')}
                     >
-                      <Gamepad2 className="size-3.5" />
-                      {t.connections.openSandbox}
+                      <Sparkles className="size-3.5" />
+                      {lang === 'en' ? 'Find more partners' : 'Tìm thêm đối tác'}
                     </SoftButton>
                   ) : null}
                 </div>
@@ -887,7 +864,7 @@ export default function Connections() {
           description={t.matches.emptyDesc}
           action={
             <SoftButton size="sm" onClick={() => navigate('/matches')}>
-              {t.sandbox.find}
+              {lang === 'en' ? 'Go to matching' : 'Vào so khớp'}
             </SoftButton>
           }
         />

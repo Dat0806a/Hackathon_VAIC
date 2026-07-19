@@ -14,8 +14,6 @@ import Dashboard from './pages/Dashboard'
 import SetupProfile from './pages/SetupProfile'
 import Matches from './pages/Matches'
 import Connections from './pages/Connections'
-import Partners from './pages/Partners'
-import Sandbox from './pages/Sandbox'
 import InvestorMatches from './pages/InvestorMatches'
 import Evaluations from './pages/Evaluations'
 import EvaluationCasePage from './pages/EvaluationCase'
@@ -233,22 +231,9 @@ export default function PortalApp() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/partners"
-          element={
-            <ProtectedRoute>
-              <Partners />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/sandbox"
-          element={
-            <ProtectedRoute>
-              <Sandbox />
-            </ProtectedRoute>
-          }
-        />
+        {/* Sandbox + partner directory removed — keep core path lean (like Intake) */}
+        <Route path="/partners" element={<Navigate to="/matches" replace />} />
+        <Route path="/sandbox" element={<Navigate to="/dashboard" replace />} />
         {isInvestorPipelineEnabled() ? (
           <>
             <Route
