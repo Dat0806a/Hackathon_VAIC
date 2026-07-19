@@ -446,7 +446,7 @@ class DatabaseEngine {
         // Real partners only — strip seeded isDemo "Mô phỏng" rows
         const parsedPartners: PartnerProfileDTO[] = (parsed.partnerProfiles || [])
           .map(mapPartnerRowToDTO)
-          .filter((p) => !p.isDemo);
+          .filter((p: PartnerProfileDTO) => !p.isDemo);
 
         // Fill in missing default tables if structure has changed
         return {
