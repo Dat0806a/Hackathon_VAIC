@@ -1,8 +1,8 @@
 'use client'
 
 /**
- * After login, show active platform announcements as a modal queue.
- * User can dismiss once (this session) or forever (this browser).
+ * Platform announcements popup — only on "inner" work pages.
+ * Never on: login/register, 404-ish, marketing, startup /dashboard, intake /programs home.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -30,12 +30,61 @@ import { MegaphoneIcon } from 'lucide-react'
 import { useTx } from '@/lib/tx'
 import { cn } from '@/lib/utils'
 
+/** Paths where announcement must never interrupt */
+function isAnnouncementBlockedPath(pathname: string): boolean {
+  const p = (pathname || '/').replace(/\/+$/, '') || '/'
+  const exact = new Set([
+    '/',
+    '/login',
+    '/register',
+    '/workspace/login',
+    '/pending',
+    '/auth/callback',
+    '/privacy',
+    '/terms',
+    '/apply',
+    // Startup home dashboard
+    '/dashboard',
+    // Intake home (programs list)
+    '/programs',
+    // Auth/error shells
+    '/not-found',
+  ])
+  if (exact.has(p)) return true
+  // Any login-ish or public auth
+  if (p.startsWith('/login') || p.startsWith('/register')) return true
+  if (p.startsWith('/workspace/login')) return true
+  if (p.startsWith('/auth/')) return true
+  // Public apply wizard
+  if (p.startsWith('/apply/')) return true
+  // Admin writes announcements — don't pop on admin itself
+  if (p.startsWith('/admin')) return true
+  return false
+}
+
+function usePathnameLite() {
+  const [path, setPath] = useState(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/',
+  )
+  useEffect(() => {
+    const sync = () => setPath(window.location.pathname)
+    sync()
+    window.addEventListener('popstate', sync)
+    // SPA (react-router) + Next soft nav
+    const id = window.setInterval(sync, 500)
+    return () => {
+      window.removeEventListener('popstate', sync)
+      clearInterval(id)
+    }
+  }, [])
+  return path
+}
+
 function useViewerKind(): ViewerKind {
   const { session, ready: intakeReady } = useAuth()
   const startupToken = useAuthStore((s) => s.accessToken)
   const startupHydrated = useAuthStore((s) => s._hasHydrated)
 
-  // Admin page uses sessionStorage — detect path
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
     try {
       if (sessionStorage.getItem('nexora-admin-session')) return 'admin'
@@ -51,23 +100,31 @@ function useViewerKind(): ViewerKind {
 export function AnnouncementPopup() {
   const { tx } = useTx()
   const viewer = useViewerKind()
+  const pathname = usePathnameLite()
+  const blocked = isAnnouncementBlockedPath(pathname)
   const [queue, setQueue] = useState<Announcement[]>([])
   const [open, setOpen] = useState(false)
   const current = queue[0] || null
 
   const load = useCallback(async () => {
-    if (viewer === 'guest') {
+    if (viewer === 'guest' || blocked) {
       setQueue([])
       setOpen(false)
       return
     }
-    // small delay so login navigation settles
-    await new Promise((r) => setTimeout(r, 400))
+    // small delay so route settles
+    await new Promise((r) => setTimeout(r, 450))
+    // re-check path after delay (user may navigate)
+    if (isAnnouncementBlockedPath(window.location.pathname)) {
+      setQueue([])
+      setOpen(false)
+      return
+    }
     const list = await fetchPublicAnnouncements()
     const visible = pickVisibleAnnouncements(list, viewer)
     setQueue(visible)
     setOpen(visible.length > 0)
-  }, [viewer])
+  }, [viewer, blocked])
 
   useEffect(() => {
     void load()
@@ -80,6 +137,13 @@ export function AnnouncementPopup() {
     }
   }, [load])
 
+  // Hide immediately when navigating onto a blocked page
+  useEffect(() => {
+    if (blocked) {
+      setOpen(false)
+    }
+  }, [blocked])
+
   const advance = (mode: 'once' | 'forever') => {
     if (!current) return
     if (mode === 'once') dismissOnce(current.id)
@@ -91,7 +155,8 @@ export function AnnouncementPopup() {
     })
   }
 
-  if (!current) return null
+  // Never mount dialog chrome on blocked routes
+  if (blocked || !current) return null
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && advance('once')}>
@@ -134,7 +199,7 @@ export function AnnouncementPopup() {
             className="w-full rounded-full sm:w-auto"
             onClick={() => advance('forever')}
           >
-            {tx('Không hiện lại', 'Don\'t show again')}
+            {tx('Không hiện lại', "Don't show again")}
           </Button>
           <Button
             type="button"
