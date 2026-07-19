@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Shared personalization form: name (7-day), avatar, activity, profession/industries.
+ * Personalization form — email-keyed, remote Blob sync, survives logout.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -14,13 +14,19 @@ import {
   hydratePersonalProfile,
   initialsFrom,
   nameChangeInfo,
+  normalizeEmail,
   savePersonalProfileRemote,
   tryChangeDisplayName,
   type ActivityStatus,
   type PersonalProfile,
 } from '@/lib/personal-profile'
 import { useTx } from '@/lib/tx'
-import { Avatar, AvatarFallback, AvatarImage, AvatarBadge } from '@/components/ui/avatar'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  AvatarBadge,
+} from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +46,7 @@ import {
   SaveIcon,
   Trash2Icon,
   UserRoundIcon,
+  CloudIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -47,46 +54,69 @@ type Props = {
   userId: string
   email?: string
   fallbackName?: string
-  /** Called after save so parent can sync auth displayName */
   onSaved?: (profile: PersonalProfile) => void
   className?: string
 }
 
 export function AccountPersonalization({
   userId,
-  email,
+  email: emailProp,
   fallbackName = '',
   onSaved,
   className,
 }: Props) {
   const { tx, lang } = useTx()
+  const email = normalizeEmail(emailProp)
   const fileRef = useRef<HTMLInputElement>(null)
+
   const [profile, setProfile] = useState<PersonalProfile>(() =>
     getPersonalProfile(userId, fallbackName, email),
   )
-  const [nameDraft, setNameDraft] = useState(profile.displayName)
+  const [nameDraft, setNameDraft] = useState(
+    () => getPersonalProfile(userId, fallbackName, email).displayName || fallbackName,
+  )
   const [saving, setSaving] = useState(false)
+  const [hydrating, setHydrating] = useState(true)
+  const [lastSaveOk, setLastSaveOk] = useState<string | null>(null)
 
-  const reload = useCallback(() => {
-    const p = getPersonalProfile(userId, fallbackName, email)
-    setProfile(p)
-    setNameDraft(p.displayName)
-  }, [userId, fallbackName, email])
+  const applyProfile = useCallback(
+    (p: PersonalProfile) => {
+      setProfile(p)
+      setNameDraft(p.displayName || fallbackName || '')
+    },
+    [fallbackName],
+  )
 
   useEffect(() => {
-    reload()
-    // Pull shared profile after login (survives logout on other sessions)
-    void hydratePersonalProfile(userId, email, fallbackName).then((p) => {
-      setProfile(p)
-      setNameDraft(p.displayName)
-    })
-    const on = () => reload()
+    let cancelled = false
+    setHydrating(true)
+    const local = getPersonalProfile(userId, fallbackName, email)
+    applyProfile(local)
+
+    void (async () => {
+      try {
+        const p = await hydratePersonalProfile(userId, email, fallbackName)
+        if (!cancelled) applyProfile(p)
+      } finally {
+        if (!cancelled) setHydrating(false)
+      }
+    })()
+
+    const on = () => {
+      applyProfile(getPersonalProfile(userId, fallbackName, email))
+    }
     window.addEventListener('nf:personal-profile', on)
-    return () => window.removeEventListener('nf:personal-profile', on)
-  }, [reload, userId, email, fallbackName])
+    return () => {
+      cancelled = true
+      window.removeEventListener('nf:personal-profile', on)
+    }
+  }, [userId, email, fallbackName, applyProfile])
 
   const cooldown = nameChangeInfo(profile)
-  const initials = initialsFrom(profile.displayName || fallbackName, email)
+  const initials = initialsFrom(
+    nameDraft || profile.displayName || fallbackName,
+    email,
+  )
   const statusMeta =
     ACTIVITY_OPTIONS.find((a) => a.id === profile.activityStatus) ||
     ACTIVITY_OPTIONS[0]
@@ -96,7 +126,7 @@ export function AccountPersonalization({
     try {
       const dataUrl = await fileToAvatarDataUrl(file)
       setProfile((p) => ({ ...p, avatarDataUrl: dataUrl }))
-      toast.success(tx('Đã chọn ảnh đại diện', 'Avatar selected'))
+      toast.success(tx('Đã chọn ảnh — nhớ bấm Lưu', 'Photo selected — click Save'))
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
       toast.error(
@@ -118,17 +148,31 @@ export function AccountPersonalization({
   }
 
   const onSave = async () => {
+    if (!email || !email.includes('@')) {
+      toast.error(
+        tx(
+          'Thiếu email tài khoản — đăng nhập lại rồi lưu.',
+          'Missing account email — sign in again then save.',
+        ),
+      )
+      return
+    }
+
     setSaving(true)
+    setLastSaveOk(null)
     try {
       let next: PersonalProfile = {
         ...profile,
         userId,
-        email: (email || profile.email || '').trim().toLowerCase(),
+        email,
+        displayName: nameDraft.trim() || profile.displayName || fallbackName,
       }
 
-      // Name change with cooldown
-      if (nameDraft.trim() !== profile.displayName) {
-        const res = tryChangeDisplayName(next, nameDraft)
+      if (nameDraft.trim() && nameDraft.trim() !== (profile.displayName || '')) {
+        const res = tryChangeDisplayName(
+          { ...next, displayName: profile.displayName || '' },
+          nameDraft.trim(),
+        )
         if (res.error === 'cooldown') {
           toast.error(
             tx(
@@ -136,7 +180,7 @@ export function AccountPersonalization({
               `Name can change every 7 days. ~${cooldown.daysLeft} day(s) left.`,
             ),
           )
-          setNameDraft(profile.displayName)
+          setNameDraft(profile.displayName || fallbackName)
           setSaving(false)
           return
         }
@@ -146,27 +190,48 @@ export function AccountPersonalization({
           return
         }
         next = {
-          ...res.profile,
-          avatarDataUrl: profile.avatarDataUrl,
-          activityStatus: profile.activityStatus,
-          customStatus: profile.customStatus,
-          profession: profile.profession,
-          industries: profile.industries,
-          headline: profile.headline,
-          email: next.email,
-          userId,
+          ...next,
+          displayName: res.profile.displayName,
+          nameChangedAt: res.profile.nameChangedAt,
         }
       }
 
-      next = await savePersonalProfileRemote(next)
-      setProfile(next)
-      setNameDraft(next.displayName)
-      onSaved?.(next)
-      toast.success(
-        tx(
-          'Đã lưu — giữ sau logout/login (theo email)',
-          'Saved — survives logout/login (keyed by email)',
-        ),
+      const saved = await savePersonalProfileRemote(next)
+      let remoteOk = false
+      try {
+        const check = await fetch(
+          `/api/personal-profile?email=${encodeURIComponent(email)}`,
+          { cache: 'no-store' },
+        )
+        const body = await check.json()
+        const rp = body?.data?.profile
+        remoteOk = !!(rp && (rp.saved || rp.displayName || rp.profession))
+        if (rp) {
+          applyProfile({ ...saved, ...rp, email, userId, saved: true })
+        } else {
+          applyProfile(saved)
+        }
+      } catch {
+        applyProfile(saved)
+      }
+
+      onSaved?.(saved)
+      const msg = remoteOk
+        ? tx(
+            'Đã lưu cloud — logout/login vẫn còn',
+            'Saved to cloud — survives logout/login',
+          )
+        : tx(
+            'Đã lưu trình duyệt — cloud chưa xác nhận',
+            'Saved in browser — cloud unconfirmed',
+          )
+      setLastSaveOk(msg)
+      toast.success(msg)
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : tx('Lưu thất bại', 'Save failed'),
       )
     } finally {
       setSaving(false)
@@ -175,12 +240,29 @@ export function AccountPersonalization({
 
   return (
     <div className={cn('flex flex-col gap-6', className)}>
-      {/* Avatar + identity */}
+      {!email ? (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          {tx(
+            'Không thấy email session — mở lại trang sau khi đăng nhập.',
+            'No session email — reopen this page after sign-in.',
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          {tx('Tài khoản', 'Account')}: <strong className="text-foreground">{email}</strong>
+          {hydrating ? ` · ${tx('Đang đồng bộ…', 'Syncing…')}` : null}
+        </p>
+      )}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="relative shrink-0">
           <Avatar className="size-20 rounded-2xl" size="lg">
             {profile.avatarDataUrl ? (
-              <AvatarImage src={profile.avatarDataUrl} alt="" className="rounded-2xl" />
+              <AvatarImage
+                src={profile.avatarDataUrl}
+                alt=""
+                className="rounded-2xl"
+              />
             ) : null}
             <AvatarFallback className="rounded-2xl bg-primary/15 text-lg font-semibold text-primary">
               {initials}
@@ -214,7 +296,9 @@ export function AccountPersonalization({
                 size="sm"
                 variant="ghost"
                 className="rounded-full"
-                onClick={() => setProfile((p) => ({ ...p, avatarDataUrl: null }))}
+                onClick={() =>
+                  setProfile((p) => ({ ...p, avatarDataUrl: null }))
+                }
               >
                 <Trash2Icon className="size-3.5" />
               </Button>
@@ -224,12 +308,13 @@ export function AccountPersonalization({
 
         <div className="grid min-w-0 flex-1 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="display-name">{tx('Tên hiển thị', 'Display name')}</Label>
+            <Label htmlFor="display-name">
+              {tx('Tên hiển thị', 'Display name')}
+            </Label>
             <Input
               id="display-name"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
-              disabled={!cooldown.canChange && nameDraft === profile.displayName}
               maxLength={80}
               placeholder={tx('Họ tên hoặc nickname', 'Full name or nickname')}
             />
@@ -237,24 +322,18 @@ export function AccountPersonalization({
               <ClockIcon className="mt-0.5 size-3 shrink-0" />
               {cooldown.canChange
                 ? tx(
-                    'Đổi tên được 1 lần mỗi 7 ngày. Lần này còn lượt.',
-                    'You can rename once every 7 days. Available now.',
+                    'Đổi tên được 1 lần / 7 ngày.',
+                    'Rename once every 7 days.',
                   )
                 : tx(
-                    `Đã đổi gần đây — có thể đổi lại sau ~${cooldown.daysLeft} ngày (${cooldown.nextAt?.toLocaleDateString(lang === 'en' ? 'en' : 'vi-VN')}).`,
-                    `Recently changed — next rename in ~${cooldown.daysLeft} day(s) (${cooldown.nextAt?.toLocaleDateString('en')}).`,
+                    `Đổi lại sau ~${cooldown.daysLeft} ngày.`,
+                    `Next rename in ~${cooldown.daysLeft} day(s).`,
                   )}
             </p>
           </div>
-          {email ? (
-            <p className="text-xs text-muted-foreground">
-              {tx('Email', 'Email')}: <span className="font-medium text-foreground">{email}</span>
-            </p>
-          ) : null}
         </div>
       </div>
 
-      {/* Activity */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>{tx('Trạng thái hoạt động', 'Activity status')}</Label>
@@ -295,7 +374,6 @@ export function AccountPersonalization({
         </div>
       </div>
 
-      {/* Profession */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>{tx('Nghề nghiệp / vai trò', 'Profession / role')}</Label>
@@ -319,7 +397,9 @@ export function AccountPersonalization({
           <Input
             className="mt-1.5"
             value={
-              PROFESSION_OPTIONS.includes(profile.profession as (typeof PROFESSION_OPTIONS)[number])
+              PROFESSION_OPTIONS.includes(
+                profile.profession as (typeof PROFESSION_OPTIONS)[number],
+              )
                 ? ''
                 : profile.profession
             }
@@ -347,7 +427,6 @@ export function AccountPersonalization({
         </div>
       </div>
 
-      {/* Industries */}
       <div className="space-y-2">
         <Label>
           {tx('Ngành quan tâm (tối đa 8)', 'Industries of interest (max 8)')}
@@ -387,25 +466,33 @@ export function AccountPersonalization({
         <Button
           type="button"
           className="rounded-full"
-          disabled={saving}
+          disabled={saving || !email}
           onClick={() => void onSave()}
         >
           <SaveIcon className="size-3.5" />
-          {tx('Lưu tùy chỉnh', 'Save personalization')}
+          {saving
+            ? tx('Đang lưu…', 'Saving…')
+            : tx('Lưu tùy chỉnh', 'Save personalization')}
         </Button>
-        <p className="text-[11px] text-muted-foreground">
-          <UserRoundIcon className="mr-1 inline size-3" />
-          {tx(
-            'Gắn với email — logout/login vẫn còn · đồng bộ menu ngay.',
-            'Tied to your email — survives logout · menu updates immediately.',
-          )}
-        </p>
+        {lastSaveOk ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+            <CloudIcon className="size-3" />
+            {lastSaveOk}
+          </span>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            <UserRoundIcon className="mr-1 inline size-3" />
+            {tx(
+              'Bắt buộc bấm Lưu. Gắn theo email — logout không mất.',
+              'You must click Save. Tied to email — logout keeps it.',
+            )}
+          </p>
+        )}
       </div>
     </div>
   )
 }
 
-/** Compact avatar + status for sidebars */
 export function UserIdentityChip({
   userId,
   fallbackName,
@@ -431,12 +518,9 @@ export function UserIdentityChip({
 
   const name = p.displayName || fallbackName || email?.split('@')[0] || 'User'
   const meta =
-    ACTIVITY_OPTIONS.find((a) => a.id === p.activityStatus) || ACTIVITY_OPTIONS[0]
-  const line =
-    p.customStatus ||
-    p.profession ||
-    subtitle ||
-    ''
+    ACTIVITY_OPTIONS.find((a) => a.id === p.activityStatus) ||
+    ACTIVITY_OPTIONS[0]
+  const line = p.customStatus || p.profession || subtitle || ''
 
   return (
     <>

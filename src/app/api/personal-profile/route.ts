@@ -122,7 +122,7 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     )
   }
-  const ok = await writeRemote({
+  const payload: PersonalProfile = {
     ...profile,
     email,
     displayName: String(profile.displayName || '').slice(0, 80),
@@ -133,9 +133,17 @@ export async function PUT(req: NextRequest) {
       ? profile.industries.slice(0, 8).map(String)
       : [],
     updatedAt: new Date().toISOString(),
-  })
+    saved: true,
+  }
+  const ok = await writeRemote(payload)
+  // Echo profile so client can confirm
+  const verify = ok ? await readRemote(email) : null
   return NextResponse.json({
     success: true,
-    data: { stored: ok, store: hasBlob() ? 'vercel-blob' : 'local-only' },
+    data: {
+      stored: ok,
+      store: hasBlob() ? 'vercel-blob' : 'local-only',
+      profile: verify || payload,
+    },
   })
 }

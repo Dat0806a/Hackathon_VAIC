@@ -1,8 +1,7 @@
 /**
- * Personal account customization — survives logout/login.
- *
- * Keyed by **email** (stable), not ephemeral userId.
- * Local localStorage + optional Vercel Blob sync (all devices).
+ * Personal customization — survives logout/login.
+ * Primary key: email (stable). Secondary: userId alias.
+ * Local SSOT + Vercel Blob for multi-device.
  */
 
 export type ActivityStatus =
@@ -15,7 +14,6 @@ export type ActivityStatus =
 
 export type PersonalProfile = {
   userId: string
-  /** Stable identity — primary storage key */
   email: string
   displayName: string
   nameChangedAt: string | null
@@ -26,10 +24,13 @@ export type PersonalProfile = {
   industries: string[]
   headline: string
   updatedAt: string
+  /** true only after user saved at least once */
+  saved?: boolean
 }
 
 const STORE_KEY = 'nf.personal.profiles.v2'
 const STORE_KEY_LEGACY = 'nf.personal.profiles.v1'
+const LAST_EMAIL_KEY = 'nf.personal.last-email.v1'
 export const NAME_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
 
 export const PROFESSION_OPTIONS = [
@@ -79,9 +80,7 @@ export const ACTIVITY_OPTIONS: {
 ]
 
 type Store = {
-  /** email → profile */
   byEmail: Record<string, PersonalProfile>
-  /** userId → email alias (migration) */
   userToEmail: Record<string, string>
 }
 
@@ -101,26 +100,27 @@ function readStore(): Store {
     const v2 = localStorage.getItem(STORE_KEY)
     if (v2) {
       const parsed = JSON.parse(v2) as Store
-      if (parsed && typeof parsed === 'object' && parsed.byEmail) {
+      if (parsed?.byEmail) {
         return {
           byEmail: parsed.byEmail || {},
           userToEmail: parsed.userToEmail || {},
         }
       }
     }
-    // migrate v1: Record<userId, profile>
     const v1 = localStorage.getItem(STORE_KEY_LEGACY)
     if (v1) {
       const legacy = JSON.parse(v1) as Record<string, PersonalProfile>
       const store = emptyStore()
       for (const [uid, p] of Object.entries(legacy || {})) {
         if (!p || typeof p !== 'object') continue
-        const email = normalizeEmail((p as { email?: string }).email) || `uid:${uid}`
+        const email =
+          normalizeEmail((p as { email?: string }).email) || `uid:${uid}`
         const next: PersonalProfile = {
-          ...emptyProfile(uid, p.displayName || '', email),
+          ...emptyProfile(uid, '', email),
           ...p,
           userId: p.userId || uid,
           email,
+          saved: true,
         }
         store.byEmail[email] = next
         store.userToEmail[uid] = email
@@ -139,15 +139,14 @@ function writeStore(store: Store) {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(store))
   } catch {
-    /* quota — try without huge avatars? keep trying */
     try {
       const slim: Store = { byEmail: {}, userToEmail: { ...store.userToEmail } }
       for (const [k, p] of Object.entries(store.byEmail)) {
         slim.byEmail[k] = {
           ...p,
           avatarDataUrl:
-            p.avatarDataUrl && p.avatarDataUrl.length > 80_000
-              ? p.avatarDataUrl.slice(0, 80_000)
+            p.avatarDataUrl && p.avatarDataUrl.length > 100_000
+              ? null
               : p.avatarDataUrl,
         }
       }
@@ -168,11 +167,11 @@ export function emptyProfile(
   fallbackName = '',
   email = '',
 ): PersonalProfile {
-  const now = new Date().toISOString()
   return {
     userId,
     email: normalizeEmail(email),
-    displayName: fallbackName.slice(0, 80),
+    // Do NOT pre-fill displayName — that fake "data" blocked remote hydrate
+    displayName: '',
     nameChangedAt: null,
     avatarDataUrl: null,
     activityStatus: 'online',
@@ -180,24 +179,43 @@ export function emptyProfile(
     profession: '',
     industries: [],
     headline: '',
-    updatedAt: now,
+    updatedAt: '1970-01-01T00:00:00.000Z',
+    saved: false,
   }
 }
 
-function resolveKey(
+/** True if this is a real user-saved profile (not a placeholder). */
+export function isPersistedProfile(p: PersonalProfile | null | undefined): boolean {
+  if (!p) return false
+  if (p.saved === true) return true
+  if (p.nameChangedAt) return true
+  if (p.avatarDataUrl) return true
+  if ((p.profession || '').trim()) return true
+  if ((p.headline || '').trim()) return true
+  if ((p.customStatus || '').trim()) return true
+  if ((p.industries || []).length > 0) return true
+  // displayName alone is not enough (could be from auth fullName)
+  return false
+}
+
+function resolveEmailKey(
   store: Store,
   userId?: string | null,
   email?: string | null,
 ): string | null {
   const em = normalizeEmail(email)
   if (em && store.byEmail[em]) return em
-  if (userId && store.userToEmail[userId]) {
-    const mapped = store.userToEmail[userId]
-    if (store.byEmail[mapped]) return mapped
+  if (userId && store.userToEmail[userId] && store.byEmail[store.userToEmail[userId]]) {
+    return store.userToEmail[userId]
   }
-  // legacy: profile stored under userId as if email
-  if (userId && store.byEmail[userId]) return userId
   if (userId && store.byEmail[`uid:${userId}`]) return `uid:${userId}`
+  // last email used on this browser (after logout)
+  try {
+    const last = normalizeEmail(localStorage.getItem(LAST_EMAIL_KEY))
+    if (last && store.byEmail[last] && (!em || em === last)) return last
+  } catch {
+    /* */
+  }
   if (em) return em
   if (userId) return `uid:${userId}`
   return null
@@ -209,23 +227,33 @@ export function getPersonalProfile(
   email?: string | null,
 ): PersonalProfile {
   const store = readStore()
-  const key = resolveKey(store, userId, email)
+  const key = resolveEmailKey(store, userId, email)
   if (key && store.byEmail[key]) {
-    const p = store.byEmail[key]
-    const out = { ...p }
-    if (!out.displayName && fallbackName) out.displayName = fallbackName.slice(0, 80)
-    if (userId) out.userId = userId
-    if (email) out.email = normalizeEmail(email)
-    return out
+    const p = { ...store.byEmail[key] }
+    if (userId) p.userId = userId
+    if (email) p.email = normalizeEmail(email)
+    // UI helper: show fallback name if user never set one
+    if (!p.displayName && fallbackName) {
+      return { ...p, displayName: fallbackName.slice(0, 80) }
+    }
+    return p
   }
-  return emptyProfile(userId || 'anon', fallbackName, email || '')
+  const shell = emptyProfile(userId || 'anon', fallbackName, email || '')
+  if (fallbackName) shell.displayName = fallbackName.slice(0, 80)
+  return shell
 }
 
 export function savePersonalProfile(profile: PersonalProfile): PersonalProfile {
-  const email = normalizeEmail(profile.email) || `uid:${profile.userId || 'anon'}`
+  const email =
+    normalizeEmail(profile.email) ||
+    (profile.userId ? `uid:${profile.userId}` : '')
+  if (!email) {
+    console.warn('[personal] save without email/userId — skipped')
+    return profile
+  }
   const next: PersonalProfile = {
     ...profile,
-    email,
+    email: email.startsWith('uid:') ? normalizeEmail(profile.email) || email : email,
     userId: profile.userId || email,
     displayName: (profile.displayName || '').trim().slice(0, 80),
     customStatus: (profile.customStatus || '').trim().slice(0, 80),
@@ -233,32 +261,52 @@ export function savePersonalProfile(profile: PersonalProfile): PersonalProfile {
     headline: (profile.headline || '').trim().slice(0, 160),
     industries: (profile.industries || []).slice(0, 8),
     updatedAt: new Date().toISOString(),
+    saved: true,
   }
+  // Prefer real email key when available
+  const storeKey =
+    normalizeEmail(profile.email) ||
+    (next.email.includes('@') ? next.email : email)
+
   const store = readStore()
-  store.byEmail[email] = next
-  if (next.userId) store.userToEmail[next.userId] = email
+  store.byEmail[storeKey] = { ...next, email: storeKey.startsWith('uid:') ? next.email : storeKey }
+  if (next.userId) store.userToEmail[next.userId] = storeKey
+  if (storeKey.includes('@')) {
+    try {
+      localStorage.setItem(LAST_EMAIL_KEY, storeKey)
+    } catch {
+      /* */
+    }
+  }
   writeStore(store)
-  return next
+  return store.byEmail[storeKey]
 }
 
-/** Save local + push to shared Blob (survives devices / re-login) */
 export async function savePersonalProfileRemote(
   profile: PersonalProfile,
 ): Promise<PersonalProfile> {
   const next = savePersonalProfile(profile)
+  const em = normalizeEmail(next.email)
+  if (!em || !em.includes('@')) {
+    console.warn('[personal] no email — remote skip, local only', next)
+    return next
+  }
   try {
-    await fetch('/api/personal-profile', {
+    const res = await fetch('/api/personal-profile', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile: next }),
     })
-  } catch {
-    /* local kept */
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || body?.data?.stored === false) {
+      console.warn('[personal] remote store failed', body)
+    }
+  } catch (e) {
+    console.warn('[personal] remote error', e)
   }
   return next
 }
 
-/** Pull remote if local missing / older */
 export async function hydratePersonalProfile(
   userId: string | null | undefined,
   email: string | null | undefined,
@@ -266,7 +314,11 @@ export async function hydratePersonalProfile(
 ): Promise<PersonalProfile> {
   const em = normalizeEmail(email)
   const local = getPersonalProfile(userId, fallbackName, em)
-  if (!em) return local
+  const localReal = isPersistedProfile(local)
+
+  if (!em || !em.includes('@')) {
+    return local
+  }
 
   try {
     const res = await fetch(
@@ -278,26 +330,23 @@ export async function hydratePersonalProfile(
     const remote = body?.data?.profile as PersonalProfile | null
     if (!remote || typeof remote !== 'object') return local
 
+    const remoteReal = isPersistedProfile(remote)
+    if (!remoteReal) return local
+
     const localT = Date.parse(local.updatedAt || '') || 0
     const remoteT = Date.parse(remote.updatedAt || '') || 0
-    // Prefer newer; if local is empty shell, take remote
-    const localEmpty =
-      !local.displayName &&
-      !local.avatarDataUrl &&
-      !local.profession &&
-      !local.headline &&
-      !(local.industries || []).length
 
-    if (remoteT >= localT || localEmpty) {
-      const merged = savePersonalProfile({
+    // Always take remote if local is not a real save, or remote is newer
+    if (!localReal || remoteT >= localT) {
+      return savePersonalProfile({
         ...remote,
         userId: userId || remote.userId,
         email: em,
+        saved: true,
       })
-      return merged
     }
-  } catch {
-    /* */
+  } catch (e) {
+    console.warn('[personal] hydrate', e)
   }
   return local
 }
@@ -332,12 +381,15 @@ export function tryChangeDisplayName(
   if (name === profile.displayName) return { profile, error: null }
   const info = nameChangeInfo(profile)
   if (!info.canChange) return { profile, error: 'cooldown' }
-  const next = savePersonalProfile({
-    ...profile,
-    displayName: name,
-    nameChangedAt: new Date().toISOString(),
-  })
-  return { profile: next, error: null }
+  // Don't save yet — caller saves with full fields
+  return {
+    profile: {
+      ...profile,
+      displayName: name,
+      nameChangedAt: new Date().toISOString(),
+    },
+    error: null,
+  }
 }
 
 export function fileToAvatarDataUrl(
