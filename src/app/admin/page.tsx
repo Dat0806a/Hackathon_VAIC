@@ -25,6 +25,8 @@ import {
   FileTextIcon,
   NetworkIcon,
   InfoIcon,
+  MegaphoneIcon,
+  CrownIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Logo } from '@/components/Logo'
@@ -91,10 +93,12 @@ import { StatCard, StatGrid } from '@/components/dashboard/StatCard'
 import { FitRadarChart } from '@/components/charts/FitRadarChart'
 import { PipelineBarChart } from '@/components/charts/PipelineBarChart'
 import { cn } from '@/lib/utils'
+import { AdminAnnouncements } from '@/components/admin/AdminAnnouncements'
+import { AdminGodConsole } from '@/components/admin/AdminGodConsole'
 
 type FilterStatus = 'pending' | 'active' | 'rejected' | 'all'
 type FilterRole = 'all' | 'startup' | 'intake' | 'admin'
-type MainTab = 'overview' | 'accounts' | 'activity'
+type MainTab = 'overview' | 'accounts' | 'activity' | 'announcements' | 'console'
 
 const PAGE_SIZE = 25
 
@@ -615,8 +619,8 @@ export default function AdminPage() {
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
               {tx(
-                'Quản trị toàn nền tảng: duyệt tài khoản Startup & Intake, giám sát queue, điều phối deal-flow.',
-                'Platform ops: approve Startup & Intake accounts, monitor queues, steer deal-flow.',
+                'Toàn quyền product: duyệt tài khoản, thông báo popup, vào mọi module, tối ưu Windows, ops client.',
+                'Full product admin: accounts, announcements, every module, Windows perf tools.',
               )}
             </p>
             <form className="mt-6 grid gap-4" onSubmit={onLogin}>
@@ -682,6 +686,16 @@ export default function AdminPage() {
       id: 'accounts' as MainTab,
       label: tx('Tài khoản', 'Accounts'),
       icon: UsersIcon,
+    },
+    {
+      id: 'announcements' as MainTab,
+      label: tx('Thông báo', 'Announcements'),
+      icon: MegaphoneIcon,
+    },
+    {
+      id: 'console' as MainTab,
+      label: tx('Toàn quyền', 'God console'),
+      icon: CrownIcon,
     },
     {
       id: 'activity' as MainTab,
@@ -892,7 +906,7 @@ export default function AdminPage() {
             onValueChange={(v) => setTab((v as MainTab) || 'overview')}
             className="w-full"
           >
-            <TabsList className="mb-4 grid h-auto w-full grid-cols-3 gap-1 rounded-xl p-1 sm:w-auto sm:inline-grid">
+            <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 rounded-xl p-1 sm:w-auto sm:grid-cols-5 sm:inline-grid">
               <TabsTrigger value="overview" className="gap-1.5 rounded-lg py-2 text-xs sm:text-sm">
                 <LayoutDashboardIcon className="size-3.5" />
                 {tx('Tổng quan', 'Overview')}
@@ -900,6 +914,14 @@ export default function AdminPage() {
               <TabsTrigger value="accounts" className="gap-1.5 rounded-lg py-2 text-xs sm:text-sm">
                 <UsersIcon className="size-3.5" />
                 {tx('Tài khoản', 'Accounts')}
+              </TabsTrigger>
+              <TabsTrigger value="announcements" className="gap-1.5 rounded-lg py-2 text-xs sm:text-sm">
+                <MegaphoneIcon className="size-3.5" />
+                {tx('Thông báo', 'Announcements')}
+              </TabsTrigger>
+              <TabsTrigger value="console" className="gap-1.5 rounded-lg py-2 text-xs sm:text-sm">
+                <CrownIcon className="size-3.5" />
+                {tx('Toàn quyền', 'God console')}
               </TabsTrigger>
               <TabsTrigger value="activity" className="gap-1.5 rounded-lg py-2 text-xs sm:text-sm">
                 <ActivityIcon className="size-3.5" />
@@ -1669,6 +1691,34 @@ export default function AdminPage() {
                     </Button>
                   </div>
                 </div>
+              </Section>
+            </TabsContent>
+
+            {/* ── ANNOUNCEMENTS ──────────────────────────────── */}
+            <TabsContent value="announcements" className="outline-none">
+              <Section
+                title={tx('Thông báo hệ thống', 'System announcements')}
+                description={tx(
+                  'Soạn rich-text · hiện popup sau khi user đăng nhập · tắt 1 lần hoặc vĩnh viễn',
+                  'Rich-text · popup after login · dismiss once or forever',
+                )}
+              >
+                {session?.accessToken ? (
+                  <AdminAnnouncements token={session.accessToken} />
+                ) : null}
+              </Section>
+            </TabsContent>
+
+            {/* ── GOD CONSOLE ────────────────────────────────── */}
+            <TabsContent value="console" className="outline-none">
+              <Section
+                title={tx('Bảng điều khiển toàn quyền', 'Full control console')}
+                description={tx(
+                  'Admin product-level: vào mọi module, perf Windows, wipe client. Root server vẫn là hạ tầng.',
+                  'Product-level admin: every module, Windows perf, wipe client. Server root stays infra.',
+                )}
+              >
+                <AdminGodConsole />
               </Section>
             </TabsContent>
 

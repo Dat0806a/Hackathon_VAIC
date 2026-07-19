@@ -2,8 +2,10 @@
 
 import { useEffect, useRef } from 'react'
 import { useTheme } from 'next-themes'
+import { allowHeavyFx } from '@/lib/perf'
+import { cn } from '@/lib/utils'
 
-/** Liquid iridescent background — a fullscreen fragment shader doing domain-warped noise. */
+/** Liquid iridescent background — WebGL FBM; skipped on Windows/lite for smoothness. */
 export function LiquidBg({ className = '' }: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const { resolvedTheme } = useTheme()
@@ -12,9 +14,19 @@ export function LiquidBg({ className = '' }: { className?: string }) {
     const canvas = ref.current
     if (!canvas) return
 
+    // CSS gradient fallback only — no perpetual rAF on Windows / lite
+    if (!allowHeavyFx()) {
+      canvas.style.display = 'none'
+      return
+    }
+
     const isLight = resolvedTheme === 'light'
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const gl = canvas.getContext('webgl', { antialias: false, alpha: true })
+    const gl = canvas.getContext('webgl', {
+      antialias: false,
+      alpha: true,
+      powerPreference: 'low-power',
+    })
     if (!gl) return
 
     const vsrc = `
@@ -109,9 +121,11 @@ export function LiquidBg({ className = '' }: { className?: string }) {
     gl.uniform1i(uIsLight, isLight ? 1 : 0)
 
     const resize = () => {
-      const scale = 0.4 // scale factor optimized for performance on retina devices
-      canvas.width = canvas.clientWidth * scale
-      canvas.height = canvas.clientHeight * scale
+      // Lower resolution on non-retina / Windows-class machines
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
+      const scale = 0.28 * dpr
+      canvas.width = Math.max(1, Math.floor(canvas.clientWidth * scale))
+      canvas.height = Math.max(1, Math.floor(canvas.clientHeight * scale))
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.uniform2f(uRes, canvas.width, canvas.height)
     }
@@ -136,9 +150,16 @@ export function LiquidBg({ className = '' }: { className?: string }) {
     )
     observer.observe(canvas)
 
-    const draw = () => {
+    let last = 0
+    const TARGET_MS = 1000 / 24 // cap ~24fps — enough for ambient bg
+    const draw = (now = performance.now()) => {
       if (!isIntersecting) return
-      gl.uniform1f(uTime, reduce ? 30 : (performance.now() - t0) / 1000)
+      if (now - last < TARGET_MS) {
+        raf = requestAnimationFrame(draw)
+        return
+      }
+      last = now
+      gl.uniform1f(uTime, reduce ? 30 : (now - t0) / 1000)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
       if (!reduce) raf = requestAnimationFrame(draw)
     }
@@ -158,6 +179,18 @@ export function LiquidBg({ className = '' }: { className?: string }) {
     }
   }, [resolvedTheme])
 
-  return <canvas ref={ref} className={className} aria-hidden="true" />;
+  return (
+    <>
+      {/* Cheap CSS wash when WebGL is off (Windows / lite) */}
+      <div
+        className={cn(
+          'nf-liquid-fallback pointer-events-none absolute inset-0 opacity-70',
+          className,
+        )}
+        aria-hidden
+      />
+      <canvas ref={ref} className={className} aria-hidden="true" />
+    </>
+  )
 }
 export default LiquidBg

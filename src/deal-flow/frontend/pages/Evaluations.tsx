@@ -31,6 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useLiveReload } from '@/lib/live-data'
 
 const FILTERS: { id: CaseListFilter; vi: string; en: string }[] = [
   { id: 'all', vi: 'Tất cả', en: 'All' },
@@ -85,10 +86,23 @@ export default function Evaluations() {
   const [filter, setFilter] = useState<CaseListFilter>('all')
   const [cases, setCases] = useState<EvaluationCase[]>([])
 
-  useEffect(() => {
+  const reloadCases = () => {
     if (!enabled || !user?.id) return
     setCases(filterEvaluationCases(user.id, filter))
+  }
+
+  useEffect(() => {
+    reloadCases()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, user?.id, filter])
+
+  useLiveReload(reloadCases, {
+    enabled: enabled && !!user?.id,
+    events: ['nf:data', 'nf:evaluations'],
+    intervalMs: 15_000,
+    debounceMs: 400,
+    immediate: false,
+  })
 
   const statusLabel = (status: string) =>
     inv.caseStatus[status] || status.replace(/_/g, ' ')

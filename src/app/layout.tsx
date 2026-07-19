@@ -125,6 +125,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        {/* Early perf class before React hydrate — avoids Windows paint thrash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='nf.perf.mode.v1';var m=localStorage.getItem(k);if(m!=='lite'&&m!=='full'){var ua=navigator.userAgent||'';var win=/Windows/i.test(ua);var rm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;var cores=navigator.hardwareConcurrency||8;m=(rm||win||cores<=4)?'lite':'full';}document.documentElement.dataset.perf=m;document.documentElement.classList.add(m==='lite'?'perf-lite':'perf-full');}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className="min-h-svh bg-background text-foreground">
         <SiteJsonLd />

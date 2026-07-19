@@ -87,3 +87,40 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 )
+
+/**
+ * Cross-tab auth sync: login/logout in one tab updates others without F5.
+ * (zustand persist only writes localStorage; other tabs need a storage listener.)
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORAGE_NAME) return
+    try {
+      if (!e.newValue) {
+        useAuthStore.getState().clearAuth()
+        useAuthStore.getState().setHasHydrated(true)
+        return
+      }
+      const parsed = JSON.parse(e.newValue) as {
+        state?: {
+          user?: UserProfile | null
+          accessToken?: string | null
+          refreshToken?: string | null
+          isAuthenticated?: boolean
+        }
+      }
+      const s = parsed?.state
+      if (!s) return
+      if (s.accessToken && s.user) {
+        useAuthStore
+          .getState()
+          .setAuth(s.user, s.accessToken, s.refreshToken || '')
+      } else {
+        useAuthStore.getState().clearAuth()
+      }
+      useAuthStore.getState().setHasHydrated(true)
+    } catch {
+      /* ignore corrupt storage */
+    }
+  })
+}

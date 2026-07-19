@@ -1417,3 +1417,96 @@ html.js-motion .float-chip:not(.is-revealed) {
     animation: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════
+   Performance lite (Windows / low-power / override)
+   Applied via html.perf-lite from src/lib/perf.ts
+═══════════════════════════════════════════════════ */
+
+html.perf-lite {
+  scroll-behavior: auto;
+}
+
+html.perf-lite body {
+  /* fixed backgrounds are expensive on Windows DWM */
+  background-attachment: scroll !important;
+}
+
+/* backdrop-filter is a common Windows lag source — solid surfaces instead */
+html.perf-lite .backdrop-blur,
+html.perf-lite .backdrop-blur-sm,
+html.perf-lite .backdrop-blur-md,
+html.perf-lite .backdrop-blur-lg,
+html.perf-lite .backdrop-blur-xl,
+html.perf-lite .backdrop-blur-2xl,
+html.perf-lite .dash-header,
+html.perf-lite [class*="backdrop-blur"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-color: color-mix(in oklch, var(--background) 94%, transparent) !important;
+}
+
+html.perf-lite .aurora-mesh,
+html.perf-lite .glow-orb,
+html.perf-lite .bg-noise,
+html.perf-lite .animate-pulse-flow-x,
+html.perf-lite .animate-pulse-flow-y {
+  animation: none !important;
+  opacity: 0.35 !important;
+}
+
+html.perf-lite .hover-lift:hover {
+  transform: none !important;
+}
+
+html.perf-lite .nf-liquid-fallback {
+  background:
+    radial-gradient(ellipse 70% 50% at 30% 40%, color-mix(in oklch, var(--primary) 28%, transparent), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 75% 60%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 65%);
+}
+
+html.perf-lite .nf-dealgraph-css {
+  background:
+    radial-gradient(circle at 40% 45%, color-mix(in oklch, var(--primary) 35%, transparent) 0%, transparent 42%),
+    radial-gradient(circle at 62% 50%, color-mix(in oklch, var(--primary) 22%, transparent) 0%, transparent 38%),
+    radial-gradient(ellipse 80% 50% at 50% 60%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 70%);
+  opacity: 0.85;
+}
+
+/* Rich announcement HTML */
+.nf-announcement-body h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+}
+.nf-announcement-body h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+.nf-announcement-body ul,
+.nf-announcement-body ol {
+  padding-left: 1.25rem;
+  margin: 0.4em 0;
+}
+.nf-announcement-body blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 0.75rem;
+  margin: 0.5em 0;
+  color: var(--muted-foreground);
+}
+.nf-announcement-body a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.nf-rich-editor:empty:before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.perf-lite [role="tabpanel"] {
+    animation: none !important;
+  }
+}

@@ -27,6 +27,7 @@ import {
 } from '@/investor/lib/evaluationStore'
 import { DemoDataBadge } from '@/investor/components/DemoDataBadge'
 import type { InvestorMatch } from '@/investor/types'
+import { useLiveReload } from '@/lib/live-data'
 import {
   PortalHero,
   PortalSection,
@@ -88,6 +89,20 @@ export default function InvestorMatches() {
     refresh()
   }, [enabled, startupId])
 
+  // Keep investor match list fresh when eval pipeline mutates / tab returns
+  useLiveReload(
+    () => {
+      if (!enabled) return
+      refresh()
+    },
+    {
+      enabled,
+      events: ['nf:data', 'nf:evaluations', 'nf:profile'],
+      immediate: false,
+      debounceMs: 500,
+    },
+  )
+
   const onRun = async () => {
     const profile = await loadProfileIfNeeded()
     if (!profile) {
@@ -99,6 +114,12 @@ export default function InvestorMatches() {
     try {
       const next = runInvestorMatching(startupId, profile)
       setMatches(next)
+      try {
+        const { live } = await import('@/lib/live-data')
+        live.evaluations({ action: 'investor-match-run' })
+      } catch {
+        /* */
+      }
       toast.success(fill(inv.scoredOk, { n: next.length }))
     } finally {
       setRunning(false)

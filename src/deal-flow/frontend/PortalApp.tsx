@@ -23,6 +23,7 @@ import PitchRoom from './pages/PitchRoom'
 import SimulationRound from './pages/SimulationRound'
 import ProofRound from './pages/ProofRound'
 import NotificationsPage from './pages/Notifications'
+import AccountSettings from './pages/AccountSettings'
 import Layout from './components/Layout'
 import { isInvestorPipelineEnabled } from '@/investor/flags'
 
@@ -197,6 +198,14 @@ export default function PortalApp() {
           element={
             <ProtectedRoute>
               <SetupProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <AccountSettings />
             </ProtectedRoute>
           }
         />

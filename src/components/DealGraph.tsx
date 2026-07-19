@@ -1,17 +1,32 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTheme } from 'next-themes'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { allowHeavyFx, isLitePerf } from '@/lib/perf'
 
 export function DealGraph() {
   const mountRef = useRef<HTMLDivElement>(null)
   const { resolvedTheme } = useTheme()
+  // Default CSS-only until client confirms full perf (avoids Windows WebGL flash)
+  const [useCssOnly, setUseCssOnly] = useState(true)
 
+  // Phase 1: decide mode on client
   useEffect(() => {
+    if (!allowHeavyFx() || isLitePerf()) {
+      setUseCssOnly(true)
+      return
+    }
+    setUseCssOnly(false)
+  }, [])
+
+  // Phase 2: mount Three only when full mode + DOM ready
+  useEffect(() => {
+    if (useCssOnly) return
+
     const mount = mountRef.current
     if (!mount) return
 
@@ -28,15 +43,20 @@ export function DealGraph() {
     )
     camera.position.set(0, 4.5, 40)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', alpha: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6))
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: 'low-power',
+      alpha: true,
+    })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
     renderer.setSize(mount.clientWidth, mount.clientHeight)
     renderer.setClearColor(0x000000, 0)
     mount.appendChild(renderer.domElement)
 
     // ---- particle galaxy --------------------------------------------------
     // Light mode: darker violet + NormalBlending (Additive washes out on white)
-    const COUNT = isLight ? 4800 : 4200
+    // Cap count — bloom + 4k points tanks Windows integrated GPUs
+    const COUNT = isLight ? 2200 : 1800
     const PURPLE = new THREE.Color(isLight ? 0x5b21b6 : 0xc084fc) // violet-800 / violet-400
     const ACCENT = new THREE.Color(isLight ? 0x7c3aed : 0xffffff) // violet-600 / white
 
@@ -295,7 +315,16 @@ export function DealGraph() {
       })
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
-  }, [resolvedTheme])
+  }, [resolvedTheme, useCssOnly])
+
+  if (useCssOnly) {
+    return (
+      <div
+        className="hero-canvas nf-dealgraph-css pointer-events-none absolute inset-0"
+        aria-hidden
+      />
+    )
+  }
 
   return <div ref={mountRef} className="hero-canvas" aria-hidden="true" />
 }

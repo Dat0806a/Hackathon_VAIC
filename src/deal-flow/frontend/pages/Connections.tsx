@@ -38,6 +38,7 @@ import {
   SoftButton,
   DemoBadge,
 } from '../components/PortalUI'
+import { live, useLiveReload } from '@/lib/live-data'
 import { Badge } from '@/components/ui/badge'
 
 /** Browser streams files through the same-origin rewrite (see next.config.ts) */
@@ -521,12 +522,16 @@ export default function Connections() {
     }
   }
 
-  useEffect(() => {
-    fetchConnections()
-    const timer = setInterval(() => fetchConnections(true), 25000)
-    return () => clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useLiveReload(
+    async () => {
+      await fetchConnections(true)
+    },
+    {
+      events: ['nf:data', 'nf:connections', 'nf:matches'],
+      intervalMs: 25_000,
+      debounceMs: 800,
+    },
+  )
 
   const handleCancelConnection = async (id) => {
     if (!id || busyId) return
@@ -536,6 +541,7 @@ export default function Connections() {
       if (res.data?.success) {
         toast.success(t.connections.withdraw)
         setConnections((prev) => prev.filter((c) => c.id !== id))
+        live.connections({ action: 'withdraw', id })
         fetchConnections(true)
       }
     } catch (e) {

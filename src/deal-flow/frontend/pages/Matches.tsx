@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { live, useLiveReload } from '@/lib/live-data'
 
 const SCORE_KEYS = [
   { key: 'industry', w: '25%' },
@@ -120,8 +121,8 @@ export default function Matches() {
     }
   }
 
-  const fetchMatches = async () => {
-    setLoading(true)
+  const fetchMatches = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const res = await api.get('/startup/matches')
       if (res.data?.success) {
@@ -130,7 +131,7 @@ export default function Matches() {
     } catch (e) {
       console.error(e)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -146,6 +147,7 @@ export default function Matches() {
       if (res.data?.success) {
         toast.success(t.matches.run, { id: toastId })
         setMatches(dedupeMatches(Array.isArray(res.data.data) ? res.data.data : []))
+        live.matches({ action: 'run' })
       }
     } catch (e) {
       const code = e?.response?.data?.error?.code || ''
@@ -161,9 +163,24 @@ export default function Matches() {
     }
   }
 
+  useLiveReload(
+    async () => {
+      // silent: keep list on screen while data refreshes in background
+      await Promise.all([fetchMatches(true), fetchExistingConnections()])
+    },
+    {
+      events: ['nf:data', 'nf:matches', 'nf:connections', 'nf:profile'],
+      intervalMs: 40_000,
+      debounceMs: 900,
+      // first paint uses non-silent once below
+      immediate: false,
+    },
+  )
+
   useEffect(() => {
-    fetchMatches()
-    fetchExistingConnections()
+    void fetchMatches(false)
+    void fetchExistingConnections()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleOpenConnect = (m) => {
@@ -224,6 +241,7 @@ export default function Matches() {
         setConnectingMatch(null)
         fetchMatches()
         fetchExistingConnections()
+        live.connections({ action: 'create', partnerId: String(partnerId) })
       }
     } catch (e) {
       const code = e?.response?.data?.error?.code || ''

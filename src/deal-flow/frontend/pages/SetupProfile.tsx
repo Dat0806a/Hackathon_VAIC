@@ -540,6 +540,12 @@ export default function SetupProfile() {
           isDirty: false,
           selectedChanges: [],
         });
+        try {
+          const { live } = await import('@/lib/live-data')
+          live.profile({ action: isCreate ? 'confirm-create' : 'confirm-update' })
+        } catch {
+          /* ignore */
+        }
         toast.success(
           isCreate
             ? tx(

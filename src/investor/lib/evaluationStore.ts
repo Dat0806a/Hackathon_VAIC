@@ -77,6 +77,18 @@ function read(): PipelineState {
 function write(state: PipelineState) {
   if (typeof window === 'undefined') return
   localStorage.setItem(KEY, JSON.stringify(state))
+  // Soft-refresh subscribers (dashboard, evaluations) without F5
+  try {
+    // dynamic import avoided — keep side-effect free path for SSR
+    window.dispatchEvent(new CustomEvent('nf:evaluations'))
+    window.dispatchEvent(new CustomEvent('nf:data', { detail: { source: 'nf:evaluations' } }))
+    localStorage.setItem(
+      'nf.live.pulse.v1',
+      JSON.stringify({ event: 'nf:evaluations', t: Date.now() }),
+    )
+  } catch {
+    /* ignore */
+  }
 }
 
 function uid(prefix: string) {

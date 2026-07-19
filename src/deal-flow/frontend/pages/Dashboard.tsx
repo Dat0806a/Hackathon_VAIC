@@ -39,6 +39,7 @@ import {
 import { listEvaluationCases } from '@/investor/lib/evaluationStore'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useLiveReload } from '@/lib/live-data'
 
 function caseNextAction(c, tx) {
   const st = String(c.status || '')
@@ -202,22 +203,33 @@ export default function Dashboard() {
     }
   }
 
-  useEffect(() => {
-    void load()
-  }, [isDirty, user?.id])
+  // Soft live reload: focus / tab visible / mutations (profile, matches, connections, eval)
+  // → no browser F5 needed when navigating back or switching tabs.
+  useLiveReload(
+    async () => {
+      await load()
+    },
+    {
+      enabled: !!user?.id,
+      events: [
+        'nf:data',
+        'nf:profile',
+        'nf:matches',
+        'nf:connections',
+        'nf:evaluations',
+        'nf:sandbox-progress',
+      ],
+      intervalMs: 45_000,
+      debounceMs: 1000,
+    },
+  )
 
+  // isDirty flips after profile edit — pull server dashboard immediately
   useEffect(() => {
-    const onProgress = () => void refreshSandboxProgress()
-    window.addEventListener('nf:sandbox-progress', onProgress)
-    window.addEventListener('focus', () => {
-      void refreshSandboxProgress()
-      if (validationOn && user?.id)
-        setEvalCases(listEvaluationCases(user.id) || [])
-    })
-    return () => {
-      window.removeEventListener('nf:sandbox-progress', onProgress)
-    }
-  }, [user?.id, validationOn])
+    if (!user?.id) return
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, user?.id])
 
   const completion = Number(data?.profileCompletion || 0)
   const hasProfile = !!confirmedProfile

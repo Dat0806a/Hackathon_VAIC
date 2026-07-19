@@ -90,6 +90,12 @@ export default function NewProgramPage() {
         rubric: { version: 'startup-screening-v1', criteria },
       })
       toast.success(tx('Đã tạo chương trình', 'Program created'))
+      try {
+        const { live } = await import('@/lib/live-data')
+        live.programs({ action: 'create', id: program.id })
+      } catch {
+        /* ignore */
+      }
       router.push(`/programs/${program.id}/overview`)
     } catch (err) {
       setError(err instanceof Error ? err.message : tx('Lỗi', 'Error'))

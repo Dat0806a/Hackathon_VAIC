@@ -38,10 +38,13 @@ export function markSandboxCompleted(
     simId: meta?.simId,
   }
   writeAll(map)
-  // Notify same-tab listeners (storage event only fires cross-tab)
+  // Notify same-tab + live-reload bus (no F5 needed on dashboard)
   try {
     window.dispatchEvent(
       new CustomEvent('nf:sandbox-progress', { detail: { userId } }),
+    )
+    window.dispatchEvent(
+      new CustomEvent('nf:data', { detail: { source: 'nf:sandbox-progress' } }),
     )
   } catch {
     /* ignore */

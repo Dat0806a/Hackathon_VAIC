@@ -21,9 +21,21 @@ import {
   Settings2Icon,
   TrophyIcon,
   ListFilterIcon,
+  UserRoundIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  AvatarBadge,
+} from '@/components/ui/avatar'
+import {
+  activityMeta,
+  getPersonalProfile,
+  initialsFrom,
+} from '@/lib/personal-profile'
+import { UserIdentityChip } from '@/components/account/AccountPersonalization'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -104,6 +116,7 @@ function pageTitle(pathname: string, mode: IntakeMode): string {
   }
   if (pathname === '/programs/new') return 'Tạo chương trình'
   if (pathname.startsWith('/matching')) return 'Tìm hồ sơ phù hợp'
+  if (pathname.startsWith('/settings/account')) return 'Tùy chỉnh tài khoản'
   if (pathname.startsWith('/settings/organization')) return 'Tổ chức'
   if (pathname.startsWith('/settings/library')) return 'Thư viện'
   if (pathname.startsWith('/applications/')) return 'Hồ sơ'
@@ -411,13 +424,25 @@ function NavUser() {
   const programId = React.useMemo(() => parseProgramId(pathname), [pathname])
   const { isMobile } = useSidebar()
   const [orgOpen, setOrgOpen] = React.useState(false)
-  const name = session?.displayName || session?.email?.split('@')[0] || 'User'
   const email = session?.email || ''
-  const initials =
-    (name || email || 'N')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(0, 2)
-      .toUpperCase() || 'U'
+  const [tick, setTick] = React.useState(0)
+  React.useEffect(() => {
+    const on = () => setTick((n) => n + 1)
+    window.addEventListener('nf:personal-profile', on)
+    return () => window.removeEventListener('nf:personal-profile', on)
+  }, [])
+  const personal = React.useMemo(
+    () =>
+      getPersonalProfile(session?.userId, session?.displayName || ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session?.userId, session?.displayName, tick],
+  )
+  const name =
+    personal.displayName ||
+    session?.displayName ||
+    email.split('@')[0] ||
+    'User'
+  const st = activityMeta(personal.activityStatus)
 
   return (
     <>
@@ -432,15 +457,16 @@ function NavUser() {
                 />
               }
             >
-              <Avatar className="size-8 rounded-lg grayscale">
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{name}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {roleLabel(session?.role)}
-                </span>
-              </div>
+              <UserIdentityChip
+                userId={session?.userId}
+                fallbackName={session?.displayName || ''}
+                email={email}
+                subtitle={
+                  personal.customStatus ||
+                  personal.profession ||
+                  roleLabel(session?.role)
+                }
+              />
               <ChevronsUpDownIcon className="ml-auto size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -453,14 +479,22 @@ function NavUser() {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="size-8 rounded-lg">
+                      {personal.avatarDataUrl ? (
+                        <AvatarImage
+                          src={personal.avatarDataUrl}
+                          alt=""
+                          className="rounded-lg"
+                        />
+                      ) : null}
                       <AvatarFallback className="rounded-lg">
-                        {initials}
+                        {initialsFrom(name, email)}
                       </AvatarFallback>
+                      <AvatarBadge className={cn('size-2.5', st.color)} />
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
                       <span className="truncate font-medium">{name}</span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {maskEmail(email)}
+                        {personal.customStatus || maskEmail(email)}
                       </span>
                     </div>
                   </div>
@@ -468,6 +502,12 @@ function NavUser() {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onClick={() => router.push('/settings/account')}
+                >
+                  <UserRoundIcon />
+                  {tx('Tùy chỉnh cá nhân', 'Personalization')}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setOrgOpen(true)}>
                   <Building2Icon />
                   {tx('Tổ chức', 'Organization')}
@@ -605,9 +645,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     if (!session) router.replace('/workspace/login')
   }, [ready, session, router])
 
-  // Deep link /settings/organization → open programs (sheet is from user menu)
+  // Org sheet lives in user menu — old deep link redirects home
   React.useEffect(() => {
-    if (pathname.startsWith('/settings/organization')) {
+    if (pathname === '/settings/organization') {
       router.replace('/programs')
     }
   }, [pathname, router])

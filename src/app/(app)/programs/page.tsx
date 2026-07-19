@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { useLiveReload } from '@/lib/live-data'
 
 function programRankScore(p: Program): number {
   // Prefer OPEN, higher quota, more sectors defined
@@ -60,10 +61,13 @@ export default function ProgramsPage() {
   const [orgName, setOrgName] = useState<string | null>(null)
   const [q, setQ] = useState('')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!session) return
-    setLoading(true)
-    setError(null)
+    const silent = !!opts?.silent
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       const fallbackOrgTitle =
         session.organizationId === 'nexora-flow'
@@ -112,15 +116,31 @@ export default function ProgramsPage() {
         e instanceof Error
           ? e.message
           : tx('Không tải được chương trình', 'Could not load programs')
-      setError(msg)
-      toast.error(msg)
+      if (!silent) {
+        setError(msg)
+        toast.error(msg)
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [session, tx])
 
+  useLiveReload(
+    async () => {
+      if (!session) return
+      await load({ silent: true })
+    },
+    {
+      enabled: !!session,
+      events: ['nf:data', 'nf:programs'],
+      intervalMs: 60_000,
+      debounceMs: 1200,
+      immediate: false,
+    },
+  )
+
   useEffect(() => {
-    void load()
+    void load({ silent: false })
   }, [load])
 
   const filtered = useMemo(() => {

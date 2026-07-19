@@ -27,7 +27,13 @@ import { usePortalI18n } from '../i18n'
 import { isInvestorPipelineEnabled } from '@/investor/flags'
 import { Logo } from '@/components/Logo'
 import { ThemeToggle, LangToggle } from '@/components/Controls'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage, AvatarBadge } from '@/components/ui/avatar'
+import {
+  activityMeta,
+  getPersonalProfile,
+  initialsFrom,
+} from '@/lib/personal-profile'
+import { UserIdentityChip } from '@/components/account/AccountPersonalization'
 import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
@@ -149,13 +155,21 @@ function NavUser() {
   const { t, lang } = usePortalI18n()
   const navigate = useNavigate()
   const invOn = isInvestorPipelineEnabled()
-  const name = user?.fullName || user?.email?.split('@')[0] || t.founder
   const email = user?.email || ''
-  const initials =
-    (name || email || 'S')
-      .replace(/[^a-zA-Z0-9À-ỹ]/g, '')
-      .slice(0, 2)
-      .toUpperCase() || 'S'
+  const [tick, setTick] = React.useState(0)
+  React.useEffect(() => {
+    const on = () => setTick((n) => n + 1)
+    window.addEventListener('nf:personal-profile', on)
+    return () => window.removeEventListener('nf:personal-profile', on)
+  }, [])
+  const personal = React.useMemo(
+    () => getPersonalProfile(user?.id, user?.fullName || ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id, user?.fullName, tick],
+  )
+  const name =
+    personal.displayName || user?.fullName || email.split('@')[0] || t.founder
+  const status = activityMeta(personal.activityStatus)
   const [unread, setUnread] = React.useState(0)
   React.useEffect(() => {
     if (!user?.id || !invOn) return
@@ -190,17 +204,16 @@ function NavUser() {
               />
             }
           >
-            <Avatar className="size-8 rounded-lg">
-              <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{name}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {t.founder}
-              </span>
-            </div>
+            <UserIdentityChip
+              userId={user?.id}
+              fallbackName={user?.fullName || ''}
+              email={email}
+              subtitle={
+                personal.customStatus ||
+                personal.profession ||
+                t.founder
+              }
+            />
             <ChevronsUpDown className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -213,14 +226,22 @@ function NavUser() {
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="size-8 rounded-lg">
+                    {personal.avatarDataUrl ? (
+                      <AvatarImage
+                        src={personal.avatarDataUrl}
+                        alt=""
+                        className="rounded-lg"
+                      />
+                    ) : null}
                     <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
-                      {initials}
+                      {initialsFrom(name, email)}
                     </AvatarFallback>
+                    <AvatarBadge className={`size-2.5 ${status.color}`} />
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{name}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {email}
+                      {personal.customStatus || email}
                     </span>
                   </div>
                 </div>
@@ -228,6 +249,10 @@ function NavUser() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem onClick={go('/account')}>
+                <UserRound />
+                {lang === 'en' ? 'Personalization' : 'Tùy chỉnh cá nhân'}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={go('/setup')}>
                 <UserRound />
                 {t.profileMenu}

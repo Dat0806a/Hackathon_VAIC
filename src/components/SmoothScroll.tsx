@@ -1,33 +1,54 @@
 'use client'
 
 import { useEffect } from 'react'
-import Lenis from 'lenis'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { allowSmoothScroll } from '@/lib/perf'
 
+/**
+ * Lenis + GSAP ScrollTrigger — disabled on Windows / lite perf / reduced-motion.
+ * Native scroll is smoother on DWM compositors than fake smooth-scroll loops.
+ */
 export function SmoothScroll() {
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!allowSmoothScroll()) return
 
-    gsap.registerPlugin(ScrollTrigger)
+    let destroyed = false
+    let cleanup: (() => void) | undefined
 
-    const mobile = window.matchMedia('(max-width: 768px)').matches
-    const lenis = new Lenis({
-      lerp: mobile ? 0.14 : 0.09,
-      smoothWheel: true,
-      wheelMultiplier: mobile ? 0.95 : 1.05,
-      touchMultiplier: 1.1,
-    })
+    void (async () => {
+      const [{ default: Lenis }, gsapMod, stMod] = await Promise.all([
+        import('lenis'),
+        import('gsap'),
+        import('gsap/ScrollTrigger'),
+      ])
+      if (destroyed) return
 
-    lenis.on('scroll', ScrollTrigger.update)
+      const gsap = gsapMod.default
+      const { ScrollTrigger } = stMod
+      gsap.registerPlugin(ScrollTrigger)
 
-    const raf = (time: number) => lenis.raf(time * 1000)
-    gsap.ticker.add(raf)
-    gsap.ticker.lagSmoothing(0)
+      const mobile = window.matchMedia('(max-width: 768px)').matches
+      const lenis = new Lenis({
+        lerp: mobile ? 0.16 : 0.1,
+        smoothWheel: true,
+        wheelMultiplier: mobile ? 0.95 : 1,
+        touchMultiplier: 1.05,
+      })
+
+      lenis.on('scroll', ScrollTrigger.update)
+
+      const raf = (time: number) => lenis.raf(time * 1000)
+      gsap.ticker.add(raf)
+      gsap.ticker.lagSmoothing(500, 33)
+
+      cleanup = () => {
+        gsap.ticker.remove(raf)
+        lenis.destroy()
+      }
+    })()
 
     return () => {
-      gsap.ticker.remove(raf)
-      lenis.destroy()
+      destroyed = true
+      cleanup?.()
     }
   }, [])
 
