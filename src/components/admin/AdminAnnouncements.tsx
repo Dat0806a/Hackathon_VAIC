@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   createEmptyAnnouncement,
+  fetchAdminAnnouncements,
   htmlToText,
   readLocalAnnouncements,
   saveAnnouncementsRemote,
@@ -42,21 +43,11 @@ export function AdminAnnouncements({ token }: Props) {
   const [saving, setSaving] = useState(false)
 
   const reload = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/announcements', {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const body = await res.json()
-        const list = (body?.data?.items || []) as Announcement[]
-        setItems(list)
-        return
-      }
-    } catch {
-      /* */
-    }
-    setItems(readLocalAnnouncements())
+    // Paint from local immediately so refresh never looks empty
+    const local = readLocalAnnouncements()
+    if (local.length) setItems(local)
+    const list = await fetchAdminAnnouncements(token)
+    setItems(list)
   }, [token])
 
   useEffect(() => {
@@ -75,10 +66,17 @@ export function AdminAnnouncements({ token }: Props) {
 
   const persist = async (next: Announcement[]) => {
     setSaving(true)
+    // Optimistic UI + local write before network
+    setItems(next)
     try {
       const saved = await saveAnnouncementsRemote(next, token)
       setItems(saved)
-      toast.success(tx('Đã lưu thông báo', 'Announcements saved'))
+      toast.success(
+        tx(
+          'Đã lưu thông báo (trình duyệt + server)',
+          'Announcement saved (browser + server)',
+        ),
+      )
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Save failed')
     } finally {

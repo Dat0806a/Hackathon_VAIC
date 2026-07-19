@@ -1,6 +1,7 @@
 /**
- * Platform announcements — admin-authored rich HTML, shown as login popup.
- * Persisted via /api/admin/announcements + public GET; client cache for offline.
+ * Platform announcements — admin-authored rich HTML.
+ * Client localStorage is SSOT when server FS is ephemeral (Vercel).
+ * Remote empty NEVER wipes non-empty local cache.
  */
 
 export type AnnouncementAudience = 'all' | 'startup' | 'intake' | 'admin'
@@ -8,9 +9,7 @@ export type AnnouncementAudience = 'all' | 'startup' | 'intake' | 'admin'
 export type Announcement = {
   id: string
   title: string
-  /** Sanitized-ish HTML from rich editor */
   bodyHtml: string
-  /** Plain text fallback */
   bodyText: string
   audience: AnnouncementAudience
   active: boolean
@@ -18,7 +17,6 @@ export type Announcement = {
   createdAt: string
   updatedAt: string
   createdBy?: string
-  /** Optional expire ISO */
   expiresAt?: string | null
 }
 
@@ -27,6 +25,7 @@ export type AnnouncementDismiss =
   | { mode: 'forever'; at: string }
 
 const LIST_KEY = 'nf.announcements.v1'
+const BACKUP_KEY = 'nf.announcements.backup.v1'
 const DISMISS_KEY = 'nf.announcements.dismiss.v1'
 const SESSION_KEY = 'nf.announcements.session.v1'
 
@@ -52,13 +51,25 @@ export function createEmptyAnnouncement(
   }
 }
 
+function parseList(raw: string | null): Announcement[] {
+  if (!raw) return []
+  try {
+    const list = JSON.parse(raw) as Announcement[] | { items?: Announcement[] }
+    if (Array.isArray(list)) return list
+    if (list && Array.isArray(list.items)) return list.items
+    return []
+  } catch {
+    return []
+  }
+}
+
 export function readLocalAnnouncements(): Announcement[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(LIST_KEY)
-    if (!raw) return []
-    const list = JSON.parse(raw) as Announcement[]
-    return Array.isArray(list) ? list : []
+    const primary = parseList(localStorage.getItem(LIST_KEY))
+    if (primary.length) return primary
+    // fallback backup if primary wiped
+    return parseList(localStorage.getItem(BACKUP_KEY))
   } catch {
     return []
   }
@@ -66,12 +77,42 @@ export function readLocalAnnouncements(): Announcement[] {
 
 export function writeLocalAnnouncements(list: Announcement[]) {
   if (typeof window === 'undefined') return
-  localStorage.setItem(LIST_KEY, JSON.stringify(list))
+  const payload = JSON.stringify(list)
+  try {
+    localStorage.setItem(LIST_KEY, payload)
+    localStorage.setItem(BACKUP_KEY, payload)
+  } catch {
+    /* quota */
+  }
   try {
     window.dispatchEvent(new CustomEvent('nf:announcements', { detail: { list } }))
   } catch {
     /* */
   }
+}
+
+/** Merge two lists by id — keep newer updatedAt */
+export function mergeAnnouncementLists(
+  a: Announcement[],
+  b: Announcement[],
+): Announcement[] {
+  const map = new Map<string, Announcement>()
+  for (const item of [...a, ...b]) {
+    if (!item?.id) continue
+    const prev = map.get(item.id)
+    if (!prev) {
+      map.set(item.id, item)
+      continue
+    }
+    const ta = Date.parse(item.updatedAt || item.createdAt || '') || 0
+    const tb = Date.parse(prev.updatedAt || prev.createdAt || '') || 0
+    map.set(item.id, ta >= tb ? item : prev)
+  }
+  return Array.from(map.values()).sort(
+    (x, y) =>
+      (y.priority || 0) - (x.priority || 0) ||
+      String(y.createdAt || '').localeCompare(String(x.createdAt || '')),
+  )
 }
 
 type DismissMap = Record<string, AnnouncementDismiss>
@@ -104,14 +145,12 @@ function sessionId(): string {
   }
 }
 
-/** User dismissed this announcement for current browser session only */
 export function dismissOnce(id: string) {
   const map = readDismiss()
   map[id] = { mode: 'once', sessionKey: sessionId() }
   writeDismiss(map)
 }
 
-/** Never show again on this browser */
 export function dismissForever(id: string) {
   const map = readDismiss()
   map[id] = { mode: 'forever', at: new Date().toISOString() }
@@ -150,25 +189,57 @@ export function pickVisibleAnnouncements(
 }
 
 export async function fetchPublicAnnouncements(): Promise<Announcement[]> {
+  const local = readLocalAnnouncements()
   try {
     const res = await fetch('/api/public/announcements', { cache: 'no-store' })
     if (!res.ok) throw new Error('fail')
     const body = await res.json()
     const items = (body?.data?.items || body?.items || body) as Announcement[]
-    if (Array.isArray(items) && items.length) {
-      writeLocalAnnouncements(items)
-      return items
+    if (Array.isArray(items) && items.length > 0) {
+      const merged = mergeAnnouncementLists(local, items)
+      writeLocalAnnouncements(merged)
+      return merged
     }
+    // Server empty — KEEP local (Vercel can't always persist FS)
   } catch {
     /* fall through */
   }
-  return readLocalAnnouncements()
+  return local
+}
+
+export async function fetchAdminAnnouncements(
+  token: string,
+): Promise<Announcement[]> {
+  const local = readLocalAnnouncements()
+  try {
+    const res = await fetch('/api/admin/announcements', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+    if (!res.ok) throw new Error('fail')
+    const body = await res.json()
+    const items = (body?.data?.items || []) as Announcement[]
+    if (Array.isArray(items) && items.length > 0) {
+      const merged = mergeAnnouncementLists(local, items)
+      writeLocalAnnouncements(merged)
+      return merged
+    }
+    // Remote empty but we have local → re-hydrate server
+    if (local.length > 0) {
+      await saveAnnouncementsRemote(local, token)
+      return local
+    }
+  } catch {
+    /* keep local */
+  }
+  return local
 }
 
 export async function saveAnnouncementsRemote(
   list: Announcement[],
   token?: string,
 ): Promise<Announcement[]> {
+  // Always persist client first (survives refresh on Vercel)
   writeLocalAnnouncements(list)
   try {
     const res = await fetch('/api/admin/announcements', {
@@ -182,8 +253,10 @@ export async function saveAnnouncementsRemote(
     if (res.ok) {
       const body = await res.json()
       const items = (body?.data?.items || body?.items || list) as Announcement[]
-      writeLocalAnnouncements(items)
-      return items
+      // Prefer what we sent if server returns empty by mistake
+      const final = Array.isArray(items) && items.length > 0 ? items : list
+      writeLocalAnnouncements(final)
+      return final
     }
   } catch {
     /* local already saved */
@@ -191,7 +264,6 @@ export async function saveAnnouncementsRemote(
   return list
 }
 
-/** Minimal HTML strip for text export */
 export function htmlToText(html: string): string {
   if (typeof document === 'undefined') {
     return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
