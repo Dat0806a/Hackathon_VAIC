@@ -11,9 +11,10 @@ import {
   PROFESSION_OPTIONS,
   fileToAvatarDataUrl,
   getPersonalProfile,
+  hydratePersonalProfile,
   initialsFrom,
   nameChangeInfo,
-  savePersonalProfile,
+  savePersonalProfileRemote,
   tryChangeDisplayName,
   type ActivityStatus,
   type PersonalProfile,
@@ -61,23 +62,28 @@ export function AccountPersonalization({
   const { tx, lang } = useTx()
   const fileRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState<PersonalProfile>(() =>
-    getPersonalProfile(userId, fallbackName),
+    getPersonalProfile(userId, fallbackName, email),
   )
   const [nameDraft, setNameDraft] = useState(profile.displayName)
   const [saving, setSaving] = useState(false)
 
   const reload = useCallback(() => {
-    const p = getPersonalProfile(userId, fallbackName)
+    const p = getPersonalProfile(userId, fallbackName, email)
     setProfile(p)
     setNameDraft(p.displayName)
-  }, [userId, fallbackName])
+  }, [userId, fallbackName, email])
 
   useEffect(() => {
     reload()
+    // Pull shared profile after login (survives logout on other sessions)
+    void hydratePersonalProfile(userId, email, fallbackName).then((p) => {
+      setProfile(p)
+      setNameDraft(p.displayName)
+    })
     const on = () => reload()
     window.addEventListener('nf:personal-profile', on)
     return () => window.removeEventListener('nf:personal-profile', on)
-  }, [reload])
+  }, [reload, userId, email, fallbackName])
 
   const cooldown = nameChangeInfo(profile)
   const initials = initialsFrom(profile.displayName || fallbackName, email)
@@ -114,11 +120,15 @@ export function AccountPersonalization({
   const onSave = async () => {
     setSaving(true)
     try {
-      let next = { ...profile }
+      let next: PersonalProfile = {
+        ...profile,
+        userId,
+        email: (email || profile.email || '').trim().toLowerCase(),
+      }
 
       // Name change with cooldown
       if (nameDraft.trim() !== profile.displayName) {
-        const res = tryChangeDisplayName(profile, nameDraft)
+        const res = tryChangeDisplayName(next, nameDraft)
         if (res.error === 'cooldown') {
           toast.error(
             tx(
@@ -135,25 +145,29 @@ export function AccountPersonalization({
           setSaving(false)
           return
         }
-        next = { ...res.profile, ...pickNonName(profile) }
-        // re-apply non-name fields after name save
-        next = savePersonalProfile({
-          ...next,
+        next = {
+          ...res.profile,
           avatarDataUrl: profile.avatarDataUrl,
           activityStatus: profile.activityStatus,
           customStatus: profile.customStatus,
           profession: profile.profession,
           industries: profile.industries,
           headline: profile.headline,
-        })
-      } else {
-        next = savePersonalProfile(next)
+          email: next.email,
+          userId,
+        }
       }
 
+      next = await savePersonalProfileRemote(next)
       setProfile(next)
       setNameDraft(next.displayName)
       onSaved?.(next)
-      toast.success(tx('Đã lưu hồ sơ cá nhân', 'Personal profile saved'))
+      toast.success(
+        tx(
+          'Đã lưu — giữ sau logout/login (theo email)',
+          'Saved — survives logout/login (keyed by email)',
+        ),
+      )
     } finally {
       setSaving(false)
     }
@@ -382,24 +396,13 @@ export function AccountPersonalization({
         <p className="text-[11px] text-muted-foreground">
           <UserRoundIcon className="mr-1 inline size-3" />
           {tx(
-            'Lưu trên thiết bị này · đồng bộ với menu tài khoản ngay.',
-            'Saved on this device · updates account menu immediately.',
+            'Gắn với email — logout/login vẫn còn · đồng bộ menu ngay.',
+            'Tied to your email — survives logout · menu updates immediately.',
           )}
         </p>
       </div>
     </div>
   )
-}
-
-function pickNonName(p: PersonalProfile) {
-  return {
-    avatarDataUrl: p.avatarDataUrl,
-    activityStatus: p.activityStatus,
-    customStatus: p.customStatus,
-    profession: p.profession,
-    industries: p.industries,
-    headline: p.headline,
-  }
 }
 
 /** Compact avatar + status for sidebars */
@@ -415,14 +418,16 @@ export function UserIdentityChip({
   subtitle?: string
 }) {
   const [p, setP] = useState(() =>
-    getPersonalProfile(userId || '', fallbackName || ''),
+    getPersonalProfile(userId || '', fallbackName || '', email),
   )
   useEffect(() => {
-    const load = () => setP(getPersonalProfile(userId || '', fallbackName || ''))
+    const load = () =>
+      setP(getPersonalProfile(userId || '', fallbackName || '', email))
     load()
+    void hydratePersonalProfile(userId, email, fallbackName).then(setP)
     window.addEventListener('nf:personal-profile', load)
     return () => window.removeEventListener('nf:personal-profile', load)
-  }, [userId, fallbackName])
+  }, [userId, fallbackName, email])
 
   const name = p.displayName || fallbackName || email?.split('@')[0] || 'User'
   const meta =

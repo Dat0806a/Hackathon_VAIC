@@ -161,10 +161,16 @@ function NavUser() {
     return () => window.removeEventListener('nf:personal-profile', on)
   }, [])
   const personal = React.useMemo(
-    () => getPersonalProfile(user?.id, user?.fullName || ''),
+    () => getPersonalProfile(user?.id, user?.fullName || '', user?.email),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.id, user?.fullName, tick],
+    [user?.id, user?.fullName, user?.email, tick],
   )
+  React.useEffect(() => {
+    if (!user?.email && !user?.id) return
+    void import('@/lib/personal-profile').then(({ hydratePersonalProfile }) =>
+      hydratePersonalProfile(user?.id, user?.email, user?.fullName || ''),
+    )
+  }, [user?.id, user?.email, user?.fullName])
   const name =
     personal.displayName || user?.fullName || email.split('@')[0] || t.founder
   const status = activityMeta(personal.activityStatus)
@@ -205,7 +211,7 @@ function NavUser() {
             <UserIdentityChip
               userId={user?.id}
               fallbackName={user?.fullName || ''}
-              email={email}
+              email={user?.email || email}
               subtitle={
                 personal.customStatus ||
                 personal.profession ||

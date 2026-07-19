@@ -86,6 +86,13 @@ export function AdminGodConsole() {
         if (k) keys.push(k)
       }
       keys.forEach((k) => {
+        // Keep personalization + announcements across wipe (user content)
+        if (
+          k.startsWith('nf.personal') ||
+          k.startsWith('nf.announcements')
+        ) {
+          return
+        }
         if (k.startsWith('nf.') || k.startsWith('nexora') || k.startsWith('dealflow')) {
           localStorage.removeItem(k)
         }

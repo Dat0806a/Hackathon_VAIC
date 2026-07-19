@@ -433,10 +433,24 @@ function NavUser() {
   }, [])
   const personal = React.useMemo(
     () =>
-      getPersonalProfile(session?.userId, session?.displayName || ''),
+      getPersonalProfile(
+        session?.userId,
+        session?.displayName || '',
+        session?.email,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session?.userId, session?.displayName, tick],
+    [session?.userId, session?.displayName, session?.email, tick],
   )
+  React.useEffect(() => {
+    if (!session?.email && !session?.userId) return
+    void import('@/lib/personal-profile').then(({ hydratePersonalProfile }) =>
+      hydratePersonalProfile(
+        session?.userId,
+        session?.email,
+        session?.displayName || '',
+      ),
+    )
+  }, [session?.userId, session?.email, session?.displayName])
   const name =
     personal.displayName ||
     session?.displayName ||
@@ -460,7 +474,7 @@ function NavUser() {
               <UserIdentityChip
                 userId={session?.userId}
                 fallbackName={session?.displayName || ''}
-                email={email}
+                email={session?.email || email}
                 subtitle={
                   personal.customStatus ||
                   personal.profession ||
