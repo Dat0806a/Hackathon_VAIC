@@ -27,14 +27,14 @@ npm start       # serve production
 
 ## Deploy to Vercel
 
-1. Log in with the team account that owns **Nexora Flow** (e.g. `ngviethoagnnn@gmail.com`):
+1. Log in with the team account that owns the project:
 
 ```bash
 vercel login
 vercel whoami
 ```
 
-2. From `landing/`:
+2. From the project root:
 
 ```bash
 vercel link --yes
@@ -47,11 +47,16 @@ vercel --prod
 vercel domains add nexora-flow.cloud
 ```
 
+## Docs
+
+- [Startup Portal](./STARTUP_PORTAL.md) — founder flow (profile → match → connect)
+
 ## Structure
 
 ```
 src/
-  app/           # App Router (layout, page, globals)
-  components/    # Landing sections + logo
-public/brand/    # SVG logo + favicon
+  app/           # App Router (layout, pages, API)
+  components/    # Landing + dashboard shell
+  deal-flow/     # Startup portal SPA + matching backend
+public/          # Static assets
 ```
